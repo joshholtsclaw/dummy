@@ -1,0 +1,3200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Storybook">
+<meta name="theme-color" content="#1a1a1a">
+<title>Storybook</title>
+
+<!-- Export libraries (loaded only when needed) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
+
+<style>
+  :root {
+    --bg: #1a1a1a;
+    --panel: #242424;
+    --panel-2: #2e2e2e;
+    --ink: #f2f2ee;
+    --ink-dim: #8a8a86;
+    --ink-faint: #5a5a56;
+    --paper: #f6f3eb;
+    --paper-shadow: rgba(0,0,0,.35);
+    --gutter: rgba(80,80,76,.55);
+    --hairline: rgba(255,255,255,.08);
+    --danger: #d97757;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    height: 100%; width: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--ink);
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -webkit-user-select: none;
+    user-select: none;
+    overscroll-behavior: none;
+    touch-action: manipulation;
+  }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+  input { font: inherit; color: inherit; }
+  #app { position: fixed; inset: 0; display: flex; flex-direction: column; }
+  .hidden { display: none !important; }
+
+  /* ---------- Common bars ---------- */
+  .bar {
+    display: flex; align-items: center; gap: 14px;
+    background: rgba(36,36,36,.85); backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    padding: 8px 14px; border-radius: 999px;
+    border: 1px solid var(--hairline);
+    color: var(--ink);
+    font-size: 12px; letter-spacing: .04em;
+  }
+  .icon-btn {
+    width: 32px; height: 32px;
+    display: grid; place-items: center;
+    border-radius: 50%;
+    color: var(--ink-dim);
+    transition: color .15s, background .15s;
+  }
+  .icon-btn:active { color: var(--ink); }
+  .icon-btn.disabled { color: var(--ink-faint); pointer-events: none; }
+  .icon-btn svg { width: 18px; height: 18px; }
+
+  /* ---------- Projects view ---------- */
+  .projects {
+    flex: 1; overflow-y: auto;
+    padding: max(48px, env(safe-area-inset-top)) 32px max(40px, env(safe-area-inset-bottom));
+    -webkit-overflow-scrolling: touch;
+  }
+  .projects-header {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 36px;
+  }
+  .projects-title {
+    font-size: 13px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+  .new-btn {
+    background: var(--ink); color: var(--bg);
+    padding: 10px 20px; border-radius: 999px;
+    font-size: 13px; font-weight: 500; letter-spacing: .03em;
+  }
+  .project-grid {
+    display: grid; gap: 32px 24px;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  }
+  .project-card {
+    display: flex; flex-direction: column; gap: 10px;
+    text-align: left;
+  }
+  .project-cover {
+    aspect-ratio: 1;
+    background: var(--paper);
+    border-radius: 2px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.35);
+    overflow: hidden;
+    display: grid; place-items: center;
+    position: relative;
+    transition: transform .15s;
+  }
+  .project-cover:active { transform: scale(.98); }
+  .project-cover img { width: 100%; height: 100%; object-fit: contain; }
+  .project-cover.empty::after {
+    content: ''; width: 30%; height: 30%;
+    border: 1px dashed var(--ink-faint);
+    border-radius: 4px;
+  }
+  .project-meta {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 8px; padding: 0 4px;
+  }
+  .project-name {
+    font-size: 14px; color: var(--ink);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    flex: 1;
+  }
+  .project-sub {
+    font-size: 11px; letter-spacing: .04em;
+    color: var(--ink-dim);
+    padding: 0 4px;
+  }
+  .project-menu-btn {
+    width: 24px; height: 24px;
+    display: grid; place-items: center;
+    color: var(--ink-dim);
+    border-radius: 50%;
+  }
+  .project-menu-btn:active { background: var(--panel); color: var(--ink); }
+  .empty-state {
+    grid-column: 1 / -1;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 80px 24px; gap: 16px;
+    color: var(--ink-dim);
+  }
+  .empty-state .big-new-btn {
+    margin-top: 12px;
+    background: var(--ink); color: var(--bg);
+    padding: 14px 32px; border-radius: 999px;
+    font-size: 14px; font-weight: 500;
+  }
+
+  /* ---------- Setup view ---------- */
+  .setup {
+    flex: 1;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 40px 24px;
+    gap: 36px;
+  }
+  .setup-back {
+    position: absolute; top: max(20px, env(safe-area-inset-top)); left: 24px;
+    color: var(--ink-dim); font-size: 13px; padding: 8px 12px;
+  }
+  .setup-back:active { color: var(--ink); }
+  .setup h1 {
+    font-size: 22px; font-weight: 500; letter-spacing: .02em;
+    margin: 0; color: var(--ink);
+  }
+  .setup .sub {
+    color: var(--ink-dim); font-size: 13px; margin-top: -28px;
+    letter-spacing: .03em;
+  }
+  .setup-section {
+    width: min(560px, 100%);
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .setup-label {
+    font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+  .size-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+  }
+  .size-card {
+    background: var(--panel); border: 1px solid var(--hairline);
+    border-radius: 14px; padding: 18px 12px;
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    transition: border-color .15s, background .15s;
+  }
+  .size-card.active { border-color: var(--ink); background: var(--panel-2); }
+  .size-card .preview {
+    background: var(--paper); border-radius: 2px;
+    box-shadow: 0 2px 8px var(--paper-shadow);
+  }
+  .size-card .name { font-size: 12px; color: var(--ink); }
+  .count-row {
+    display: flex; gap: 8px; flex-wrap: wrap;
+  }
+  .count-pill {
+    background: var(--panel); border: 1px solid var(--hairline);
+    border-radius: 999px; padding: 10px 18px;
+    font-size: 13px; min-width: 60px; text-align: center;
+    transition: border-color .15s, background .15s;
+  }
+  .count-pill.active { border-color: var(--ink); background: var(--panel-2); }
+  .start-btn {
+    margin-top: 8px;
+    background: var(--ink); color: var(--bg);
+    padding: 14px 32px; border-radius: 999px;
+    font-size: 14px; font-weight: 500; letter-spacing: .04em;
+  }
+
+  /* ---------- Draw view ---------- */
+  .draw { flex: 1; position: relative; display: flex; flex-direction: column; }
+  .topbar {
+    position: absolute; top: max(12px, env(safe-area-inset-top));
+    left: 50%; transform: translateX(-50%);
+    z-index: 20;
+  }
+  .page-counter {
+    min-width: 78px; text-align: center;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink); font-size: 13px;
+    letter-spacing: .06em;
+  }
+  .page-counter .label { color: var(--ink-dim); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; display: block; }
+
+  .canvas-stage {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    padding: 80px 24px 130px;
+    position: relative;
+    overflow: hidden;
+  }
+  .page-frame {
+    position: relative;
+    background: var(--paper);
+    box-shadow: 0 12px 40px rgba(0,0,0,.4), 0 1px 0 rgba(255,255,255,.04);
+    border-radius: 1px;
+    touch-action: none;
+    overflow: hidden;
+    transition: transform .25s ease, opacity .25s ease;
+  }
+  .page-frame.flip-out-left  { transform: translateX(-30%); opacity: 0; }
+  .page-frame.flip-out-right { transform: translateX(30%);  opacity: 0; }
+  .zoom-container {
+    position: absolute; inset: 0;
+    transform-origin: 50% 50%;
+  }
+  .page-frame canvas {
+    display: block; width: 100%; height: 100%;
+    touch-action: none;
+  }
+  /* Gutter: dashed centerline overlay for spreads */
+  .gutter-line {
+    position: absolute; top: 0; bottom: 0;
+    left: 50%; width: 0;
+    border-left: 1px dashed var(--gutter);
+    pointer-events: none;
+  }
+
+  .toolbar {
+    position: absolute; bottom: max(20px, env(safe-area-inset-bottom));
+    left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(36,36,36,.9); backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    padding: 8px; border-radius: 999px;
+    border: 1px solid var(--hairline);
+    z-index: 20;
+    max-width: calc(100vw - 24px);
+    overflow-x: auto;
+  }
+  .toolbar::-webkit-scrollbar { display: none; }
+  .tool-btn {
+    width: 38px; height: 38px;
+    display: grid; place-items: center;
+    border-radius: 50%;
+    color: var(--ink-dim);
+    flex-shrink: 0;
+    transition: background .15s, color .15s;
+  }
+  .tool-btn.active { background: var(--ink); color: var(--bg); }
+  .tool-btn svg { width: 19px; height: 19px; }
+  .divider {
+    width: 1px; height: 22px; background: var(--hairline); margin: 0 4px; flex-shrink: 0;
+  }
+  .swatch {
+    width: 26px; height: 26px; border-radius: 50%;
+    border: 1px solid var(--hairline);
+    display: grid; place-items: center;
+    flex-shrink: 0;
+    transition: transform .12s;
+  }
+  .swatch.active { transform: scale(1.18); border-color: var(--ink); }
+  .swatch .dot { width: 16px; height: 16px; border-radius: 50%; }
+  .slider-cluster {
+    display: flex; align-items: center; gap: 6px; padding: 0 4px;
+    flex-shrink: 0;
+  }
+  .slider-cluster .readout {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--panel-2);
+    display: grid; place-items: center;
+    flex-shrink: 0;
+  }
+  .slider-cluster .readout .dot { background: var(--ink); border-radius: 50%; }
+  .slider {
+    -webkit-appearance: none; appearance: none;
+    width: 70px; height: 4px; border-radius: 2px;
+    background: var(--panel-2);
+    outline: none; flex-shrink: 0;
+  }
+  .slider::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--ink); cursor: pointer;
+  }
+  .slider-label {
+    font-size: 9px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ink-faint);
+    width: 22px; text-align: center;
+    flex-shrink: 0;
+  }
+
+  /* Project menu (top-right of draw view) */
+  .top-right {
+    position: absolute; top: max(12px, env(safe-area-inset-top));
+    right: max(16px, env(safe-area-inset-right));
+    display: flex; gap: 6px; z-index: 20;
+  }
+  .top-left {
+    position: absolute; top: max(12px, env(safe-area-inset-top));
+    left: max(16px, env(safe-area-inset-left));
+    display: flex; gap: 6px; z-index: 20;
+  }
+  .top-right .icon-btn, .top-left .icon-btn {
+    background: rgba(36,36,36,.85); backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--hairline);
+  }
+  .bottom-left {
+    position: absolute;
+    bottom: max(20px, env(safe-area-inset-bottom));
+    left: max(16px, env(safe-area-inset-left));
+    z-index: 20;
+  }
+
+  /* Popover menu */
+  .popover {
+    position: absolute; z-index: 60;
+    background: var(--panel); border: 1px solid var(--hairline);
+    border-radius: 14px; padding: 6px;
+    min-width: 200px;
+    box-shadow: 0 10px 40px rgba(0,0,0,.55);
+  }
+  .popover button {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%; padding: 10px 12px; border-radius: 8px;
+    color: var(--ink); font-size: 13px; text-align: left;
+  }
+  .popover button:hover { background: var(--panel-2); }
+  .popover button.danger { color: var(--danger); }
+  .popover button svg { width: 15px; height: 15px; opacity: .8; }
+  .popover .sep { height: 1px; background: var(--hairline); margin: 4px 0; }
+
+  /* ---------- Thumbnails view ---------- */
+  .thumbs {
+    flex: 1; overflow-y: auto;
+    padding: max(64px, env(safe-area-inset-top)) 24px max(40px, env(safe-area-inset-bottom));
+    -webkit-overflow-scrolling: touch;
+  }
+  .thumbs-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 28px;
+  }
+  .thumbs-title { display: flex; gap: 10px; align-items: baseline; }
+  #thumbs-title-name {
+    font-size: 18px; color: var(--ink); font-weight: 500;
+    padding: 2px 4px; border-radius: 4px;
+    cursor: text;
+    outline: none;
+    border: 1px solid transparent;
+    min-width: 60px;
+  }
+  #thumbs-title-name:hover { background: var(--panel); }
+  #thumbs-title-name[contenteditable="true"] { border-color: var(--ink-dim); background: var(--panel); }
+  #thumbs-title-meta {
+    font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+  .thumbs-back {
+    font-size: 12px; letter-spacing: .04em; color: var(--ink-dim);
+    padding: 4px 0; margin-bottom: 6px;
+  }
+  .thumbs-back:hover, .thumbs-back:active { color: var(--ink); }
+  .thumbs-actions { display: flex; gap: 12px; align-items: center; }
+  .thumbs-actions button {
+    color: var(--ink-dim); font-size: 13px;
+    padding: 4px 10px; border-radius: 999px;
+  }
+  .thumbs-actions button:hover { background: var(--panel); color: var(--ink); }
+  .thumbs-actions button:active { color: var(--ink); }
+  .thumb-grid {
+    display: grid; gap: 28px 16px;
+  }
+  .thumb {
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    background: none; text-align: center;
+  }
+  .thumb-img {
+    width: 100%;
+    background: var(--paper);
+    border-radius: 2px;
+    box-shadow: 0 4px 14px rgba(0,0,0,.3);
+    overflow: hidden;
+    display: flex; position: relative;
+    transition: transform .15s;
+  }
+  .thumb-img.active-view { outline: 2px solid var(--ink); outline-offset: 4px; }
+  .thumb-img:active { transform: scale(.97); }
+  .thumb-img img, .thumb-img canvas {
+    width: 100%; height: 100%; object-fit: contain; display: block;
+    flex: 1;
+  }
+  .thumb-img.is-spread > .gutter-line { display: block; }
+  .thumb-num {
+    font-size: 10px; color: var(--ink-dim);
+    font-variant-numeric: tabular-nums; letter-spacing: .1em;
+    text-transform: uppercase;
+  }
+
+  /* ---------- Lasso ---------- */
+  .lasso-svg {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    overflow: visible;
+  }
+  .lasso-path {
+    fill: rgba(255,255,255,.08);
+    stroke: rgba(0,0,0,.85);
+    stroke-width: 2;
+    stroke-dasharray: 8 4;
+    vector-effect: non-scaling-stroke;
+  }
+  .selection-overlay {
+    position: absolute;
+    display: none;
+    transform-origin: 50% 50%;
+    border: 1px dashed rgba(0,0,0,.7);
+    box-sizing: border-box;
+    pointer-events: auto;
+    cursor: move;
+    touch-action: none;
+  }
+  .selection-overlay.active { display: block; }
+  .sel-canvas {
+    display: block;
+    width: 100%; height: 100%;
+  }
+  .sel-handle {
+    position: absolute;
+    width: 14px; height: 14px;
+    background: var(--ink);
+    border: 1px solid var(--bg);
+    border-radius: 50%;
+    pointer-events: auto;
+    touch-action: none;
+  }
+  .h-tl { top: -7px; left: -7px;   cursor: nwse-resize; }
+  .h-tr { top: -7px; right: -7px;  cursor: nesw-resize; }
+  .h-bl { bottom: -7px; left: -7px;  cursor: nesw-resize; }
+  .h-br { bottom: -7px; right: -7px; cursor: nwse-resize; }
+  .h-rot {
+    top: -34px; left: 50%;
+    transform: translateX(-50%);
+    cursor: grab;
+    background: var(--ink);
+  }
+  .h-rot::after {
+    content: ''; position: absolute;
+    top: 14px; left: 50%; transform: translateX(-50%);
+    width: 1px; height: 20px;
+    background: rgba(0,0,0,.6);
+  }
+
+  /* ---------- Lasso actions toolbar ---------- */
+  .lasso-toolbar {
+    position: absolute;
+    bottom: max(78px, calc(env(safe-area-inset-bottom) + 60px));
+    left: 50%; transform: translateX(-50%);
+    display: flex; gap: 4px;
+    background: rgba(36,36,36,.95); backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    padding: 6px; border-radius: 999px;
+    border: 1px solid var(--hairline);
+    box-shadow: 0 6px 24px rgba(0,0,0,.5);
+    z-index: 21;
+    pointer-events: auto;
+  }
+  .lasso-toolbar.hidden { display: none; }
+  .lasso-toolbar button {
+    padding: 8px 14px; border-radius: 999px;
+    color: var(--ink); font-size: 13px;
+    letter-spacing: .03em;
+  }
+  .lasso-toolbar button:hover:not(:disabled) { background: var(--panel-2); }
+  .lasso-toolbar button:disabled { color: var(--ink-faint); cursor: default; }
+  .lasso-toolbar button.danger { color: var(--danger); }
+  .lasso-toolbar .lt-divider { width: 1px; background: var(--hairline); margin: 0 2px; }
+
+  /* ---------- Text boxes ---------- */
+  .textbox-layer {
+    position: absolute; inset: 0;
+    pointer-events: none;
+  }
+  .textbox-layer.text-active { pointer-events: auto; }
+  .textbox {
+    position: absolute;
+    box-sizing: border-box;
+    background: transparent;
+    border: 1px dashed transparent;
+    pointer-events: auto;
+    cursor: default;
+  }
+  .textbox-layer.text-active .textbox { border-color: rgba(80,80,76,.35); }
+  .textbox.selected { border: 1px solid rgba(0,0,0,.6); }
+  .textbox.editing {
+    outline: 2px solid var(--ink);
+    border: 1px solid rgba(0,0,0,.6);
+  }
+  .textbox-input {
+    display: block;
+    width: 100%; height: 100%;
+    box-sizing: border-box;
+    padding: 4px 6px;
+    margin: 0;
+    background: transparent;
+    border: 0;
+    color: #1a1a1a;
+    font: inherit;
+    font-family: "Courier New", "Courier", ui-monospace, monospace;
+    line-height: 1.3;
+    text-align: inherit;
+    resize: none;
+    outline: none;
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+    pointer-events: none;
+    cursor: default;
+  }
+  .textbox-input:not([readonly]) {
+    -webkit-user-select: text; user-select: text;
+    pointer-events: auto;
+    cursor: text;
+  }
+  .textbox-input::placeholder {
+    color: rgba(80,80,76,.6);
+  }
+  .resize-handle {
+    position: absolute;
+    right: -7px; bottom: -7px;
+    width: 14px; height: 14px;
+    background: var(--ink);
+    border: 1px solid var(--bg);
+    border-radius: 50%;
+    cursor: nwse-resize;
+    display: none;
+    pointer-events: auto;
+    touch-action: none;
+  }
+  .textbox.selected .resize-handle,
+  .textbox.editing .resize-handle { display: block; }
+
+  /* Floating text formatting toolbar */
+  .text-toolbar {
+    position: absolute;
+    z-index: 6;
+    display: flex; align-items: center; gap: 4px;
+    background: rgba(36,36,36,.95); backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    padding: 6px; border-radius: 999px;
+    border: 1px solid var(--hairline);
+    box-shadow: 0 6px 24px rgba(0,0,0,.5);
+  }
+  .text-toolbar .tt-btn {
+    width: 32px; height: 32px;
+    display: grid; place-items: center;
+    border-radius: 50%;
+    color: var(--ink-dim);
+    font-size: 13px;
+  }
+  .text-toolbar .tt-btn:active,
+  .text-toolbar .tt-btn.active { background: var(--ink); color: var(--bg); }
+  .text-toolbar .tt-btn svg { width: 16px; height: 16px; }
+  .text-toolbar .tt-btn.danger { color: var(--danger); }
+  .text-toolbar .tt-divider {
+    width: 1px; height: 18px; background: var(--hairline); margin: 0 4px;
+  }
+  .text-toolbar .tt-size {
+    min-width: 36px; text-align: center;
+    color: var(--ink); font-variant-numeric: tabular-nums;
+    font-size: 12px;
+  }
+
+  /* ---------- Modal ---------- */
+  .modal-bg {
+    position: fixed; inset: 0; background: rgba(0,0,0,.55);
+    display: grid; place-items: center; z-index: 70;
+    padding: 24px;
+  }
+  .modal {
+    background: var(--panel); border: 1px solid var(--hairline);
+    border-radius: 18px; padding: 24px;
+    max-width: 380px; width: 100%;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .modal h2 { margin: 0; font-size: 16px; font-weight: 500; }
+  .modal p { margin: 0; color: var(--ink-dim); font-size: 13px; }
+  .modal input[type="text"] {
+    background: var(--bg); border: 1px solid var(--hairline);
+    border-radius: 10px; padding: 10px 12px;
+    color: var(--ink); font-size: 14px;
+    outline: none;
+  }
+  .modal input[type="text"]:focus { border-color: var(--ink-dim); }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+  .modal-actions button {
+    padding: 9px 16px; border-radius: 999px; font-size: 13px;
+    border: 1px solid var(--hairline);
+  }
+  .modal-actions .primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .modal-actions .danger { background: var(--danger); color: white; border-color: var(--danger); }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: max(100px, env(safe-area-inset-bottom));
+    left: 50%; transform: translateX(-50%);
+    background: var(--panel); color: var(--ink);
+    padding: 10px 18px; border-radius: 999px;
+    border: 1px solid var(--hairline);
+    font-size: 13px;
+    z-index: 80;
+    opacity: 0; pointer-events: none;
+    transition: opacity .2s;
+  }
+  .toast.show { opacity: 1; }
+
+  @media (max-width: 600px) {
+    .size-grid { grid-template-columns: repeat(2, 1fr); }
+    .toolbar { gap: 4px; padding: 6px; }
+    .tool-btn { width: 34px; height: 34px; }
+    .slider { width: 56px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ============== PROJECTS VIEW ============== -->
+  <section id="projects-view" class="projects hidden">
+    <div class="projects-header">
+      <div class="projects-title">Projects</div>
+      <button class="new-btn" id="new-project-btn">+ New book</button>
+    </div>
+    <div class="project-grid" id="project-grid"></div>
+  </section>
+
+  <!-- ============== SETUP VIEW ============== -->
+  <section id="setup-view" class="setup hidden">
+    <button class="setup-back" id="setup-back">‹ Projects</button>
+    <h1>New book</h1>
+    <div class="sub">Choose page format and length.</div>
+
+    <div class="setup-section">
+      <div class="setup-label">Page size</div>
+      <div class="size-grid" id="size-grid"></div>
+    </div>
+
+    <div class="setup-section">
+      <div class="setup-label">Page count</div>
+      <div class="count-row" id="count-row"></div>
+      <div class="setup-label" style="opacity:.7; margin-top:4px;" id="setup-summary"></div>
+    </div>
+
+    <button class="start-btn" id="start-btn">Begin</button>
+  </section>
+
+  <!-- ============== DRAW VIEW ============== -->
+  <section id="draw-view" class="draw hidden">
+
+    <div class="top-left">
+      <button class="icon-btn" id="back-to-projects" aria-label="Projects">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+      </button>
+    </div>
+
+    <div class="bottom-left bar" style="padding:4px 6px; gap:0;">
+      <button class="icon-btn disabled" id="undo-btn" aria-label="Undo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h11a5 5 0 010 10H7"/><path d="M3 8l4-4M3 8l4 4"/></svg>
+      </button>
+      <button class="icon-btn disabled" id="redo-btn" aria-label="Redo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8H10a5 5 0 000 10h7"/><path d="M21 8l-4-4M21 8l-4 4"/></svg>
+      </button>
+    </div>
+
+    <div class="topbar bar">
+      <button class="icon-btn" id="prev-view" aria-label="Previous">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+      </button>
+      <div class="page-counter" id="page-counter"><span class="label" id="counter-label">Cover</span><span id="counter-num">01</span></div>
+      <button class="icon-btn" id="next-view" aria-label="Next">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+      </button>
+    </div>
+
+    <div class="top-right">
+      <button class="icon-btn hidden" id="fit-btn" aria-label="Fit to screen">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/></svg>
+      </button>
+      <button class="icon-btn" id="open-thumbs" aria-label="Thumbnails">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></svg>
+      </button>
+      <button class="icon-btn" id="open-menu" aria-label="More">
+        <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/></svg>
+      </button>
+    </div>
+
+    <div class="canvas-stage" id="canvas-stage">
+      <div class="page-frame" id="page-frame">
+        <div class="zoom-container" id="zoom-container">
+          <canvas id="canvas"></canvas>
+          <svg class="lasso-svg" id="lasso-svg" preserveAspectRatio="none"><polygon class="lasso-path" id="lasso-poly" /></svg>
+          <div class="selection-overlay" id="selection-overlay">
+            <canvas class="sel-canvas" id="sel-canvas"></canvas>
+            <div class="sel-handle h-tl" data-corner="tl"></div>
+            <div class="sel-handle h-tr" data-corner="tr"></div>
+            <div class="sel-handle h-bl" data-corner="bl"></div>
+            <div class="sel-handle h-br" data-corner="br"></div>
+            <div class="sel-handle h-rot" data-corner="rot"></div>
+          </div>
+          <div class="textbox-layer" id="textbox-layer"></div>
+          <div class="gutter-line" id="gutter-line" style="display:none;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Floating lasso-actions toolbar (visible when lasso tool is active and there's something to act on) -->
+    <div class="lasso-toolbar hidden" id="lasso-toolbar">
+      <button id="lasso-copy">Copy</button>
+      <button id="lasso-cut">Cut</button>
+      <div class="lt-divider"></div>
+      <button id="lasso-paste">Paste</button>
+      <div class="lt-divider"></div>
+      <button class="danger" id="lasso-delete">Delete</button>
+    </div>
+
+    <!-- Floating text-formatting toolbar (visible when a textbox is selected/editing) -->
+    <div class="text-toolbar hidden" id="text-toolbar">
+      <button class="tt-btn" id="tt-size-down" aria-label="Smaller">A−</button>
+      <div class="tt-size" id="tt-size">24</div>
+      <button class="tt-btn" id="tt-size-up" aria-label="Larger">A+</button>
+      <div class="tt-divider"></div>
+      <button class="tt-btn" id="tt-align-l" aria-label="Align left">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 6h16M4 11h10M4 16h14M4 21h8"/></svg>
+      </button>
+      <button class="tt-btn" id="tt-align-c" aria-label="Align center">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 6h16M7 11h10M5 16h14M8 21h8"/></svg>
+      </button>
+      <button class="tt-btn" id="tt-align-r" aria-label="Align right">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 6h16M10 11h10M6 16h14M12 21h8"/></svg>
+      </button>
+      <div class="tt-divider"></div>
+      <button class="tt-btn danger" id="tt-delete" aria-label="Delete">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13"/></svg>
+      </button>
+    </div>
+
+    <div class="toolbar" id="toolbar">
+      <button class="tool-btn active" data-tool="pencil" id="tool-pencil" aria-label="Pencil">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 3.5l4 4L8 20H4v-4z"/><path d="M14 6l4 4"/></svg>
+      </button>
+      <button class="tool-btn" data-tool="eraser" id="tool-eraser" aria-label="Eraser">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l8-8 6 6-5 5H6z"/><path d="M11 9l4-4 6 6-4 4"/></svg>
+      </button>
+      <button class="tool-btn" data-tool="text" id="tool-text" aria-label="Text">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6h14M12 6v14M9 20h6"/></svg>
+      </button>
+      <button class="tool-btn" data-tool="lasso" id="tool-lasso" aria-label="Lasso">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5c4-2 8-2 12 0s2 6 0 8-8 1-12 1-3-7 0-9z" stroke-dasharray="2 2"/><path d="M9 16c-1 1.5-1 3 0 4 1 1 3 .5 3 .5"/></svg>
+      </button>
+
+      <div class="divider"></div>
+
+      <div class="slider-cluster">
+        <div class="slider-label">Size</div>
+        <div class="readout"><div class="dot" id="size-dot"></div></div>
+        <input type="range" min="1" max="120" value="3" class="slider" id="brush-size">
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="slider-cluster">
+        <div class="slider-label">Opac</div>
+        <div class="readout"><div class="dot" id="opacity-dot"></div></div>
+        <input type="range" min="5" max="100" value="100" class="slider" id="brush-opacity">
+      </div>
+
+      <div class="divider"></div>
+
+      <div id="swatches" style="display:flex; gap:6px;"></div>
+    </div>
+  </section>
+
+  <!-- ============== THUMBNAILS VIEW ============== -->
+  <section id="thumbs-view" class="thumbs hidden">
+    <div class="thumbs-header">
+      <div>
+        <button id="thumbs-back-projects" class="thumbs-back" aria-label="All projects">‹ Projects</button>
+        <div class="thumbs-title" id="thumbs-title-row">
+          <span id="thumbs-title-name" contenteditable="false" spellcheck="false"></span>
+          <span id="thumbs-title-meta"></span>
+        </div>
+      </div>
+      <div class="thumbs-actions">
+        <button id="thumbs-zoom-out" aria-label="Smaller thumbs">−</button>
+        <button id="thumbs-zoom-in" aria-label="Larger thumbs">+</button>
+        <button id="thumbs-close">Done</button>
+      </div>
+    </div>
+    <div class="thumb-grid" id="thumb-grid"></div>
+  </section>
+
+</div>
+
+<!-- Confirm modal -->
+<div class="modal-bg hidden" id="modal-bg">
+  <div class="modal">
+    <h2 id="modal-title">Are you sure?</h2>
+    <p id="modal-body">This cannot be undone.</p>
+    <input type="text" id="modal-input" class="hidden" placeholder="Name">
+    <div class="modal-actions">
+      <button id="modal-cancel">Cancel</button>
+      <button class="primary" id="modal-ok">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Popover -->
+<div class="popover hidden" id="popover"></div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+/* ============================================================
+ * Constants
+ * ============================================================ */
+const PAGE_SIZES = [
+  { id: 'square',    label: 'Square',    w: 1500, h: 1500 },
+  { id: 'landscape', label: 'Landscape', w: 1800, h: 1200 },
+  { id: 'portrait',  label: 'Portrait',  w: 1200, h: 1600 },
+];
+const COUNTS = [16, 24, 32, 40, 48];
+const GREYS = [
+  { id: 'black',  hex: '#1a1a1a' },
+  { id: 'dark',   hex: '#555555' },
+  { id: 'mid',    hex: '#8e8e8e' },
+  { id: 'light',  hex: '#c2c2c2' },
+];
+const PAPER_COLOR = '#f6f3eb';
+
+/* ============================================================
+ * Tiny IndexedDB wrapper
+ * ============================================================ */
+const DB_NAME = 'thumbnail-db';
+const DB_VERSION = 1;
+let _db = null;
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    if (_db) return resolve(_db);
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('meta'))  db.createObjectStore('meta');
+      if (!db.objectStoreNames.contains('pages')) db.createObjectStore('pages');
+    };
+    req.onsuccess = e => { _db = e.target.result; resolve(_db); };
+    req.onerror  = e => reject(e.target.error);
+  });
+}
+async function idbGet(store, key) {
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const r = db.transaction(store, 'readonly').objectStore(store).get(key);
+    r.onsuccess = () => res(r.result);
+    r.onerror   = () => rej(r.error);
+  });
+}
+async function idbPut(store, key, val) {
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const r = db.transaction(store, 'readwrite').objectStore(store).put(val, key);
+    r.onsuccess = () => res();
+    r.onerror   = () => rej(r.error);
+  });
+}
+async function idbDelete(store, key) {
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const r = db.transaction(store, 'readwrite').objectStore(store).delete(key);
+    r.onsuccess = () => res();
+    r.onerror   = () => rej(r.error);
+  });
+}
+async function idbKeys(store, prefix = '') {
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const out = [];
+    const r = db.transaction(store, 'readonly').objectStore(store).openKeyCursor();
+    r.onsuccess = e => {
+      const c = e.target.result;
+      if (c) {
+        if (!prefix || String(c.key).startsWith(prefix)) out.push(c.key);
+        c.continue();
+      } else res(out);
+    };
+    r.onerror = () => rej(r.error);
+  });
+}
+
+/* ============================================================
+ * Books index (persistent list of projects)
+ * ============================================================ */
+async function getBooks() {
+  return (await idbGet('meta', 'books_index')) || [];
+}
+async function saveBooks(list) {
+  await idbPut('meta', 'books_index', list);
+}
+async function upsertBook(book) {
+  const list = await getBooks();
+  const i = list.findIndex(b => b.id === book.id);
+  book.updatedAt = Date.now();
+  if (i >= 0) list[i] = book; else list.unshift(book);
+  await saveBooks(list);
+}
+async function deleteBook(id) {
+  const list = (await getBooks()).filter(b => b.id !== id);
+  await saveBooks(list);
+  // delete pages
+  const keys = await idbKeys('pages', `${id}-`);
+  for (const k of keys) await idbDelete('pages', k);
+}
+
+/* ============================================================
+ * v1 → v2 migration
+ * ============================================================ */
+async function migrateV1IfNeeded() {
+  const oldBook = await idbGet('meta', 'book');
+  if (!oldBook) return;
+  const list = await getBooks();
+  if (list.length > 0) { await idbDelete('meta', 'book'); return; }
+  // Create new project from old book
+  const id = 'b_' + Date.now();
+  const newBook = {
+    id, name: 'Untitled',
+    sizeId: oldBook.sizeId, w: oldBook.w, h: oldBook.h,
+    pageCount: oldBook.pageCount, viewIdx: 0,
+    createdAt: Date.now(), updatedAt: Date.now(),
+  };
+  await upsertBook(newBook);
+  for (let i = 0; i < oldBook.pageCount; i++) {
+    const blob = await idbGet('pages', `p${i}`);
+    if (blob) {
+      await idbPut('pages', `${id}-p${i}`, blob);
+      await idbDelete('pages', `p${i}`);
+    }
+  }
+  await idbDelete('meta', 'book');
+}
+
+/* ============================================================
+ * State
+ * ============================================================ */
+const state = {
+  view: null,           // 'projects' | 'setup' | 'draw' | 'thumbs'
+  books: [],
+  currentBook: null,    // currently open book
+  currentViewIdx: 0,    // index into views() array
+  setupSize: 'square',
+  setupCount: 32,
+  tool: 'pencil',
+  brushSize: 3,
+  greyIdx: 0,
+  opacity: 1.0,
+  isDrawing: false,
+  lastPt: null,
+};
+
+/* ============================================================
+ * Views model: cover (single) + spreads + back cover (single)
+ * ============================================================ */
+function viewsOf(book) {
+  const out = [];
+  out.push({ type: 'single', pages: [0] });
+  for (let p = 1; p < book.pageCount - 1; p += 2) {
+    out.push({ type: 'spread', pages: [p, p + 1] });
+  }
+  if (book.pageCount > 1) {
+    out.push({ type: 'single', pages: [book.pageCount - 1] });
+  }
+  return out;
+}
+
+function counterLabelFor(view, book) {
+  if (view.pages[0] === 0) return { label: 'Cover',     num: '01' };
+  if (view.pages[0] === book.pageCount - 1) return { label: 'Back', num: pad(book.pageCount) };
+  return { label: 'Spread', num: `${pad(view.pages[0]+1)}–${pad(view.pages[1]+1)}` };
+}
+function pad(n) { return String(n).padStart(2, '0'); }
+
+/* ============================================================
+ * Routing
+ * ============================================================ */
+function showView(name) {
+  state.view = name;
+  for (const v of ['projects','setup','draw','thumbs']) {
+    document.getElementById(`${v}-view`).classList.toggle('hidden', v !== name);
+  }
+  hidePopover();
+}
+
+async function goProjects() {
+  showView('projects');
+  state.books = await getBooks();
+  renderProjects();
+}
+function goSetup() {
+  showView('setup');
+  state.setupSize = 'square';
+  state.setupCount = 32;
+  renderSetup();
+}
+async function goDraw() {
+  showView('draw');
+  sizePageFrame();
+  await loadCurrentViewToCanvas();
+  renderTextOverlay();
+  updatePageCounter();
+  updateNavButtons();
+  if (typeof updateLassoToolbar === 'function') updateLassoToolbar();
+}
+async function goThumbs() {
+  exitEditMode();
+  await flushBookSave();
+  await saveCurrentView(true);
+  showView('thumbs');
+  await renderThumbs();
+}
+
+/* ============================================================
+ * Projects view
+ * ============================================================ */
+async function renderProjects() {
+  const grid = document.getElementById('project-grid');
+  grid.innerHTML = '';
+
+  if (state.books.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.innerHTML = `<div>No projects yet.</div>
+      <button class="big-new-btn" id="empty-new-btn">Create your first book</button>`;
+    grid.appendChild(empty);
+    document.getElementById('empty-new-btn').onclick = goSetup;
+    return;
+  }
+
+  for (const book of state.books) {
+    const card = document.createElement('div');
+    card.className = 'project-card';
+
+    const cover = document.createElement('button');
+    cover.className = 'project-cover empty';
+    cover.style.aspectRatio = `${book.w} / ${book.h}`;
+    cover.onclick = () => openBook(book.id);
+    card.appendChild(cover);
+
+    const meta = document.createElement('div');
+    meta.className = 'project-meta';
+    meta.innerHTML = `
+      <div class="project-name">${escapeHtml(book.name)}</div>
+      <button class="project-menu-btn" aria-label="Menu">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/></svg>
+      </button>
+    `;
+    card.appendChild(meta);
+    const sub = document.createElement('div');
+    sub.className = 'project-sub';
+    sub.textContent = `${book.pageCount} pages · ${formatDate(book.updatedAt)}`;
+    card.appendChild(sub);
+
+    grid.appendChild(card);
+
+    meta.querySelector('.project-menu-btn').onclick = (e) => {
+      e.stopPropagation();
+      showProjectMenu(book, e.currentTarget);
+    };
+
+    // Lazy load cover
+    idbGet('pages', `${book.id}-p0`).then(blob => {
+      if (blob) {
+        cover.classList.remove('empty');
+        const url = URL.createObjectURL(blob);
+        const im = new Image();
+        im.onload = () => URL.revokeObjectURL(url);
+        im.src = url;
+        cover.appendChild(im);
+      }
+    });
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function formatDate(ts) {
+  const d = new Date(ts);
+  const today = new Date(); today.setHours(0,0,0,0);
+  const day = new Date(d); day.setHours(0,0,0,0);
+  const diff = Math.round((today - day) / 86400000);
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Yesterday';
+  if (diff < 7)   return `${diff} days ago`;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+document.getElementById('new-project-btn').onclick = goSetup;
+
+async function openBook(id) {
+  const book = state.books.find(b => b.id === id);
+  if (!book) return;
+  state.currentBook = book;
+  state.currentViewIdx = book.viewIdx || 0;
+  clearUndoStacks();
+  resetZoom();
+  if (lassoSelection) {
+    document.getElementById('selection-overlay').classList.remove('active');
+    lassoSelection = null;
+  }
+  await goDraw();
+}
+
+/* ============================================================
+ * Setup view
+ * ============================================================ */
+function renderSetup() {
+  const grid = document.getElementById('size-grid');
+  grid.innerHTML = '';
+  PAGE_SIZES.forEach(s => {
+    const el = document.createElement('button');
+    el.className = 'size-card' + (state.setupSize === s.id ? ' active' : '');
+    const maxDim = Math.max(s.w, s.h);
+    el.innerHTML = `
+      <div class="preview" style="width:${44 * (s.w/maxDim)}px;height:${44 * (s.h/maxDim)}px;"></div>
+      <div class="name">${s.label}</div>
+    `;
+    el.onclick = () => { state.setupSize = s.id; renderSetup(); };
+    grid.appendChild(el);
+  });
+
+  const row = document.getElementById('count-row');
+  row.innerHTML = '';
+  COUNTS.forEach(n => {
+    const el = document.createElement('button');
+    el.className = 'count-pill' + (state.setupCount === n ? ' active' : '');
+    el.textContent = n;
+    el.onclick = () => { state.setupCount = n; renderSetup(); };
+    row.appendChild(el);
+  });
+
+  // Layout summary
+  const c = state.setupCount;
+  const spreads = (c - 2) / 2;
+  document.getElementById('setup-summary').textContent =
+    `Cover + ${spreads} spreads + back cover`;
+}
+
+document.getElementById('setup-back').onclick = goProjects;
+
+document.getElementById('start-btn').onclick = async () => {
+  const size = PAGE_SIZES.find(s => s.id === state.setupSize);
+  const id = 'b_' + Date.now();
+  // Generate a name
+  const existing = await getBooks();
+  let n = 1;
+  let name = 'Untitled';
+  const used = new Set(existing.map(b => b.name));
+  while (used.has(name)) { n++; name = `Untitled ${n}`; }
+  const book = {
+    id, name,
+    sizeId: size.id, w: size.w, h: size.h,
+    pageCount: state.setupCount, viewIdx: 0,
+    createdAt: Date.now(), updatedAt: Date.now(),
+  };
+  await upsertBook(book);
+  state.books = await getBooks();
+  state.currentBook = book;
+  state.currentViewIdx = 0;
+  clearUndoStacks();
+  await goDraw();
+};
+
+/* ============================================================
+ * Modal helpers
+ * ============================================================ */
+function showConfirm({ title, body, okLabel = 'OK', danger = false, onOk }) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').textContent = body;
+  document.getElementById('modal-input').classList.add('hidden');
+  const ok = document.getElementById('modal-ok');
+  ok.textContent = okLabel;
+  ok.classList.toggle('danger', danger);
+  ok.classList.toggle('primary', !danger);
+  const bg = document.getElementById('modal-bg');
+  bg.classList.remove('hidden');
+  document.getElementById('modal-cancel').onclick = () => bg.classList.add('hidden');
+  ok.onclick = async () => { bg.classList.add('hidden'); await onOk(); };
+}
+function showPrompt({ title, body, defaultValue = '', okLabel = 'Save', onOk }) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').textContent = body || '';
+  const input = document.getElementById('modal-input');
+  input.classList.remove('hidden');
+  input.value = defaultValue;
+  setTimeout(() => { input.focus(); input.select(); }, 50);
+  const ok = document.getElementById('modal-ok');
+  ok.textContent = okLabel;
+  ok.classList.add('primary');
+  ok.classList.remove('danger');
+  const bg = document.getElementById('modal-bg');
+  bg.classList.remove('hidden');
+  document.getElementById('modal-cancel').onclick = () => bg.classList.add('hidden');
+  const submit = async () => {
+    const v = input.value.trim();
+    if (!v) return;
+    bg.classList.add('hidden');
+    await onOk(v);
+  };
+  ok.onclick = submit;
+  input.onkeydown = e => { if (e.key === 'Enter') submit(); };
+}
+
+/* ============================================================
+ * Popover menu (project menu, draw-view menu)
+ * ============================================================ */
+function showPopover(items, anchorEl) {
+  const pop = document.getElementById('popover');
+  pop.innerHTML = '';
+  for (const it of items) {
+    if (it === 'sep') {
+      const sep = document.createElement('div');
+      sep.className = 'sep';
+      pop.appendChild(sep);
+    } else {
+      const btn = document.createElement('button');
+      if (it.danger) btn.classList.add('danger');
+      btn.innerHTML = `${it.icon || ''}<span>${escapeHtml(it.label)}</span>`;
+      btn.onclick = () => { hidePopover(); it.onClick(); };
+      pop.appendChild(btn);
+    }
+  }
+  pop.classList.remove('hidden');
+  // Position near anchor
+  const r = anchorEl.getBoundingClientRect();
+  pop.style.left = '0px'; pop.style.top = '0px';
+  const pr = pop.getBoundingClientRect();
+  let left = Math.min(window.innerWidth - pr.width - 12, r.right - pr.width);
+  let top  = r.bottom + 6;
+  if (top + pr.height > window.innerHeight - 12) top = r.top - pr.height - 6;
+  if (left < 12) left = 12;
+  pop.style.left = left + 'px';
+  pop.style.top  = top + 'px';
+  // Click-away
+  setTimeout(() => {
+    document.addEventListener('pointerdown', popOutside, { once: true, capture: true });
+  }, 0);
+}
+function hidePopover() { document.getElementById('popover').classList.add('hidden'); }
+function popOutside(e) {
+  const pop = document.getElementById('popover');
+  if (!pop.contains(e.target)) hidePopover();
+  else document.addEventListener('pointerdown', popOutside, { once: true, capture: true });
+}
+
+const ICONS = {
+  rename:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M16.5 3.5l4 4L8 20H4v-4z"/></svg>',
+  pdf:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z"/><path d="M14 3v6h6"/></svg>',
+  zip:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M10 8h4M10 12h4M10 16h4"/></svg>',
+  trash:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13"/></svg>',
+};
+
+function showProjectMenu(book, anchor) {
+  showPopover([
+    { label: 'Open',          icon: ICONS.rename, onClick: () => openBook(book.id) },
+    { label: 'Rename',        icon: ICONS.rename, onClick: () => renameBook(book) },
+    'sep',
+    { label: 'Export PDF',    icon: ICONS.pdf,    onClick: () => exportPDF(book) },
+    { label: 'Export PNGs (zip)', icon: ICONS.zip, onClick: () => exportZIP(book) },
+    'sep',
+    { label: 'Delete',        icon: ICONS.trash,  danger: true, onClick: () => confirmDelete(book) },
+  ], anchor);
+}
+
+function renameBook(book) {
+  showPrompt({
+    title: 'Rename book',
+    defaultValue: book.name,
+    onOk: async (name) => {
+      book.name = name;
+      await upsertBook(book);
+      state.books = await getBooks();
+      if (state.view === 'projects') renderProjects();
+    },
+  });
+}
+function confirmDelete(book) {
+  showConfirm({
+    title: `Delete "${book.name}"?`,
+    body: 'All drawings in this book will be erased. This cannot be undone.',
+    okLabel: 'Delete',
+    danger: true,
+    onOk: async () => {
+      await deleteBook(book.id);
+      state.books = await getBooks();
+      if (state.currentBook && state.currentBook.id === book.id) state.currentBook = null;
+      if (state.view === 'projects') renderProjects();
+      else goProjects();
+    },
+  });
+}
+
+/* ============================================================
+ * Drawing canvases
+ *  - mainCanvas: committed strokes (lives in JS, not in DOM)
+ *  - strokeCanvas: current stroke buffer (alpha = 1)
+ *  - displayCanvas: visible <canvas>, recomposited each frame
+ * ============================================================ */
+const displayCanvas = document.getElementById('canvas');
+const displayCtx = displayCanvas.getContext('2d', { willReadFrequently: false });
+const mainCanvas   = document.createElement('canvas');
+const strokeCanvas = document.createElement('canvas');
+let mainCtx, strokeCtx;
+
+function currentView() {
+  return viewsOf(state.currentBook)[state.currentViewIdx];
+}
+function currentCanvasDims() {
+  // For spread: wide canvas spanning two pages
+  const v = currentView();
+  const b = state.currentBook;
+  if (v.type === 'spread') return { w: b.w * 2, h: b.h, isSpread: true };
+  return { w: b.w, h: b.h, isSpread: false };
+}
+
+function sizePageFrame() {
+  const stage = document.getElementById('canvas-stage');
+  const frame = document.getElementById('page-frame');
+  const dims = currentCanvasDims();
+  // Stage CSS padding: 80 top, 24 sides, 130 bottom.
+  const aw = stage.clientWidth  - 48;
+  const ah = stage.clientHeight - 210;
+  const ratio = dims.w / dims.h;
+  let w = aw, h = w / ratio;
+  if (h > ah) { h = ah; w = h * ratio; }
+  frame.style.width  = w + 'px';
+  frame.style.height = h + 'px';
+
+  // Set canvas internal resolutions
+  displayCanvas.width  = dims.w;
+  displayCanvas.height = dims.h;
+  mainCanvas.width     = dims.w;
+  mainCanvas.height    = dims.h;
+  strokeCanvas.width   = dims.w;
+  strokeCanvas.height  = dims.h;
+  mainCtx   = mainCanvas.getContext('2d');
+  strokeCtx = strokeCanvas.getContext('2d');
+
+  // Paper background on main
+  mainCtx.fillStyle = PAPER_COLOR;
+  mainCtx.fillRect(0, 0, mainCanvas.width, mainCanvas.height);
+  strokeCtx.clearRect(0, 0, strokeCanvas.width, strokeCanvas.height);
+
+  // Show/hide gutter dashed line
+  const gutter = document.getElementById('gutter-line');
+  gutter.style.display = dims.isSpread ? 'block' : 'none';
+
+  // Lasso SVG viewBox = canvas dimensions (so polygon points use canvas coords)
+  const lassoSvg = document.getElementById('lasso-svg');
+  if (lassoSvg) lassoSvg.setAttribute('viewBox', `0 0 ${dims.w} ${dims.h}`);
+
+  redrawDisplay();
+}
+
+window.addEventListener('resize', () => {
+  if (state.view === 'draw') {
+    // Snapshot composite, resize, restore
+    const snap = displayCanvas.toDataURL('image/png');
+    sizePageFrame();
+    const im = new Image();
+    im.onload = () => {
+      mainCtx.drawImage(im, 0, 0);
+      redrawDisplay();
+    };
+    im.src = snap;
+    layoutTextBoxes();
+  }
+});
+
+async function loadCurrentViewToCanvas() {
+  const v = currentView();
+  const b = state.currentBook;
+  // Reset main to paper
+  mainCtx.fillStyle = PAPER_COLOR;
+  mainCtx.fillRect(0, 0, mainCanvas.width, mainCanvas.height);
+  if (v.type === 'single') {
+    const blob = await idbGet('pages', `${b.id}-p${v.pages[0]}`);
+    if (blob) {
+      const bmp = await createImageBitmap(blob);
+      mainCtx.drawImage(bmp, 0, 0, b.w, b.h);
+    }
+  } else {
+    const [pl, pr] = v.pages;
+    const lblob = await idbGet('pages', `${b.id}-p${pl}`);
+    const rblob = await idbGet('pages', `${b.id}-p${pr}`);
+    if (lblob) {
+      const bmp = await createImageBitmap(lblob);
+      mainCtx.drawImage(bmp, 0, 0, b.w, b.h);
+    }
+    if (rblob) {
+      const bmp = await createImageBitmap(rblob);
+      mainCtx.drawImage(bmp, b.w, 0, b.w, b.h);
+    }
+  }
+  strokeCtx.clearRect(0, 0, strokeCanvas.width, strokeCanvas.height);
+  redrawDisplay();
+}
+
+function redrawDisplay() {
+  displayCtx.globalCompositeOperation = 'source-over';
+  displayCtx.globalAlpha = 1;
+  displayCtx.clearRect(0, 0, displayCanvas.width, displayCanvas.height);
+  displayCtx.drawImage(mainCanvas, 0, 0);
+  if (strokeCanvas.width > 0) {
+    // Pencil strokes use 'darken': drawing gray over black leaves the black
+    // intact (the grays appear to sit underneath darker linework).
+    if (activeStrokeTool === 'pencil' || state.tool === 'pencil') {
+      displayCtx.globalCompositeOperation = 'darken';
+    }
+    if (state.opacity < 1) displayCtx.globalAlpha = state.opacity;
+    displayCtx.drawImage(strokeCanvas, 0, 0);
+    displayCtx.globalAlpha = 1;
+    displayCtx.globalCompositeOperation = 'source-over';
+  }
+}
+
+let saveTimer = null;
+async function saveCurrentView(immediate = false) {
+  const doSave = async () => {
+    const v = currentView();
+    const b = state.currentBook;
+    // mainCanvas always holds the committed result. Save halves for spread.
+    if (v.type === 'single') {
+      const blob = await canvasToBlob(mainCanvas);
+      await idbPut('pages', `${b.id}-p${v.pages[0]}`, blob);
+    } else {
+      const [pl, pr] = v.pages;
+      const lc = document.createElement('canvas');
+      lc.width = b.w; lc.height = b.h;
+      lc.getContext('2d').drawImage(mainCanvas, 0, 0, b.w, b.h, 0, 0, b.w, b.h);
+      const rc = document.createElement('canvas');
+      rc.width = b.w; rc.height = b.h;
+      rc.getContext('2d').drawImage(mainCanvas, b.w, 0, b.w, b.h, 0, 0, b.w, b.h);
+      const lblob = await canvasToBlob(lc);
+      const rblob = await canvasToBlob(rc);
+      await idbPut('pages', `${b.id}-p${pl}`, lblob);
+      await idbPut('pages', `${b.id}-p${pr}`, rblob);
+    }
+    b.viewIdx = state.currentViewIdx;
+    await upsertBook(b);
+  };
+  if (immediate) {
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+    return doSave();
+  }
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(doSave, 400);
+}
+function canvasToBlob(c) {
+  return new Promise(res => c.toBlob(res, 'image/png'));
+}
+
+/* ============================================================
+ * Stroke handling — tapered, pressure-sensitive, textured pencil
+ *
+ * During a stroke we accumulate points, painting only the new
+ * segment incrementally for live feedback. On lift, we clear the
+ * stroke buffer and repaint the entire stroke with full taper at
+ * both ends, then composite onto the main canvas at the chosen
+ * opacity.
+ * ============================================================ */
+function getCanvasPoint(e) {
+  const rect = displayCanvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * (displayCanvas.width  / rect.width);
+  const y = (e.clientY - rect.top)  * (displayCanvas.height / rect.height);
+  const pressure = (e.pointerType === 'pen' && e.pressure > 0) ? e.pressure : 0.5;
+  return { x, y, p: pressure };
+}
+
+function baseWidthFor(tool) {
+  return state.brushSize * (tool === 'eraser' ? 4 : 1);
+}
+function pressureWidth(base, p) {
+  // Stronger pressure response than v2: 0.18..1.85 range
+  return base * (0.18 + p * 1.67);
+}
+function taperFactor(i, total) {
+  if (total <= 1) return 0.6;
+  // Ramp length scales with stroke length but capped
+  const ramp = Math.max(2, Math.min(8, total / 6));
+  const tIn  = Math.min(i / ramp, 1);
+  const tOut = Math.min((total - 1 - i) / ramp, 1);
+  // Smooth out with a curve
+  const f = Math.min(tIn, tOut);
+  return 0.25 + 0.75 * f; // never go fully to zero
+}
+
+/* --- Pencil: textured stamps along path --- */
+function paintTexturedDot(ctx, pt, brushW, color) {
+  ctx.fillStyle = color;
+  // A few jittered sub-stamps so even a tap looks textured
+  const stamps = Math.max(2, Math.floor(brushW / 3));
+  for (let i = 0; i < stamps; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist  = Math.random() * brushW * 0.35;
+    const x = pt.x + Math.cos(angle) * dist;
+    const y = pt.y + Math.sin(angle) * dist;
+    const r = (brushW / 4) * (0.5 + Math.random() * 0.7);
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+function paintTexturedSegment(ctx, a, b, wA, wB, color) {
+  ctx.fillStyle = color;
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 0.5) return;
+  const ux = dx / dist, uy = dy / dist;
+  const px = -uy, py = ux;
+  const avgW = (wA + wB) / 2;
+  // Spacing: small fraction of brush width — denser for visible line
+  const spacing = Math.max(0.7, avgW / 6);
+  const stamps = Math.max(1, Math.ceil(dist / spacing));
+  for (let i = 0; i < stamps; i++) {
+    const t = (i + 0.5) / stamps;
+    const cx = a.x + dx * t;
+    const cy = a.y + dy * t;
+    const w  = wA + (wB - wA) * t;
+    // Random perpendicular jitter for grain
+    const jit = (Math.random() - 0.5) * w * 0.45;
+    const x = cx + px * jit;
+    const y = cy + py * jit;
+    const r = (w / 4) * (0.55 + Math.random() * 0.75);
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+/* --- Eraser: clean tapered line, no grain --- */
+function paintCleanDot(ctx, pt, brushW, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(pt.x, pt.y, brushW / 2, 0, Math.PI * 2);
+  ctx.fill();
+}
+function paintCleanSegment(ctx, a, b, wA, wB, color) {
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.strokeStyle = color;
+  // Subdivide so width can vary along the segment
+  const dist = Math.hypot(b.x - a.x, b.y - a.y);
+  const steps = Math.max(2, Math.ceil(dist / 6));
+  for (let i = 0; i < steps; i++) {
+    const t1 = i / steps, t2 = (i + 1) / steps;
+    ctx.lineWidth = wA + (wB - wA) * t1;
+    ctx.beginPath();
+    ctx.moveTo(a.x + (b.x - a.x) * t1, a.y + (b.y - a.y) * t1);
+    ctx.lineTo(a.x + (b.x - a.x) * t2, a.y + (b.y - a.y) * t2);
+    ctx.stroke();
+  }
+}
+
+function paintDot(ctx, pt, brushW, color, textured) {
+  if (textured) paintTexturedDot(ctx, pt, brushW, color);
+  else          paintCleanDot   (ctx, pt, brushW, color);
+}
+function paintSegment(ctx, a, b, wA, wB, color, textured) {
+  if (textured) paintTexturedSegment(ctx, a, b, wA, wB, color);
+  else          paintCleanSegment   (ctx, a, b, wA, wB, color);
+}
+
+/* Repaint a finished stroke from its point list, applying full taper. */
+function repaintFullStroke(points) {
+  const tool = state.tool;
+  const textured = tool !== 'eraser';
+  const color    = tool === 'eraser' ? PAPER_COLOR : GREYS[state.greyIdx].hex;
+  const base     = baseWidthFor(tool);
+  const n = points.length;
+  strokeCtx.clearRect(0, 0, strokeCanvas.width, strokeCanvas.height);
+  if (n === 1) {
+    const p = points[0];
+    const w = pressureWidth(base, p.p) * taperFactor(0, 1);
+    paintDot(strokeCtx, p, w, color, textured);
+    return;
+  }
+  for (let i = 0; i < n - 1; i++) {
+    const a = points[i], b = points[i + 1];
+    const wA = pressureWidth(base, a.p) * taperFactor(i,     n);
+    const wB = pressureWidth(base, b.p) * taperFactor(i + 1, n);
+    paintSegment(strokeCtx, a, b, wA, wB, color, textured);
+  }
+}
+
+let activePointerId = null;
+let activePointerType = null;
+let activeStrokeTool  = null;
+let strokePoints    = null;
+
+displayCanvas.addEventListener('pointerdown', e => {
+  // Reserve finger for swipes if a pen has been seen, and reserve it for
+  // tapping/dragging text boxes regardless of pen state when text tool active.
+  if (state.tool === 'text') return;            // text handler manages its own pointers
+  if (state.tool === 'lasso') return;           // lasso handler manages its own pointers
+  if (pinching) return;                          // two-finger pinch in progress
+  if (e.pointerType === 'touch' && supportsPen()) return;
+  e.preventDefault();
+  activePointerId = e.pointerId;
+  activePointerType = e.pointerType;
+  activeStrokeTool  = state.tool;
+  displayCanvas.setPointerCapture(e.pointerId);
+  state.isDrawing = true;
+  strokePoints = [getCanvasPoint(e)];
+  // Live preview: paint the first dot (no taper-out yet — it's only one point)
+  strokeCtx.clearRect(0, 0, strokeCanvas.width, strokeCanvas.height);
+  const p = strokePoints[0];
+  const tool = state.tool;
+  const textured = tool !== 'eraser';
+  const color    = tool === 'eraser' ? PAPER_COLOR : GREYS[state.greyIdx].hex;
+  const base     = baseWidthFor(tool);
+  const w        = pressureWidth(base, p.p) * 0.6;  // start small, will grow as stroke develops
+  paintDot(strokeCtx, p, w, color, textured);
+  redrawDisplay();
+});
+
+displayCanvas.addEventListener('pointermove', e => {
+  if (!state.isDrawing || e.pointerId !== activePointerId) return;
+  e.preventDefault();
+  const events = (typeof e.getCoalescedEvents === 'function') ? e.getCoalescedEvents() : [e];
+  const tool = state.tool;
+  const textured = tool !== 'eraser';
+  const color    = tool === 'eraser' ? PAPER_COLOR : GREYS[state.greyIdx].hex;
+  const base     = baseWidthFor(tool);
+  for (const ev of events) {
+    const pt = getCanvasPoint(ev);
+    const a  = strokePoints[strokePoints.length - 1];
+    strokePoints.push(pt);
+    const i  = strokePoints.length - 1;
+    // Live taper-in only (we don't know the end yet)
+    const tIn = Math.min(i / 8, 1);
+    const wA = pressureWidth(base, a.p)  * (0.25 + 0.75 * Math.min((i - 1) / 8, 1));
+    const wB = pressureWidth(base, pt.p) * (0.25 + 0.75 * tIn);
+    paintSegment(strokeCtx, a, pt, wA, wB, color, textured);
+  }
+  redrawDisplay();
+});
+
+async function endStroke() {
+  if (!state.isDrawing) return;
+  state.isDrawing = false;
+  activePointerId = null;
+  activePointerType = null;
+  // Snapshot the strokeCanvas SYNCHRONOUSLY here. We can't drawImage(strokeCanvas)
+  // after an `await` below, because a new stroke may start in that gap and clear
+  // (or repaint) the live strokeCanvas, which would erase or replace our pixels.
+  const strokeSnap = document.createElement('canvas');
+  strokeSnap.width  = strokeCanvas.width;
+  strokeSnap.height = strokeCanvas.height;
+  strokeSnap.getContext('2d').drawImage(strokeCanvas, 0, 0);
+  // Free the strokeCanvas for the next stroke right away.
+  strokeCtx.clearRect(0, 0, strokeCanvas.width, strokeCanvas.height);
+  strokePoints = null;
+  // Snapshot the canvas state BEFORE this stroke is committed (for undo).
+  await pushUndoState();
+  // Commit our snapshot to main. Any in-progress new stroke (started during the
+  // await) lives in the now-fresh strokeCanvas and is composited by redrawDisplay.
+  mainCtx.globalAlpha = state.opacity;
+  if (activeStrokeTool === 'pencil') {
+    // Darken: black-on-gray and gray-on-black both end up at the darker tone,
+    // so the linework reads as on top of the shading without double-darkening
+    // overlapped grays.
+    mainCtx.globalCompositeOperation = 'darken';
+  }
+  mainCtx.drawImage(strokeSnap, 0, 0);
+  mainCtx.globalAlpha = 1;
+  mainCtx.globalCompositeOperation = 'source-over';
+  activeStrokeTool = null;
+  redrawDisplay();
+  saveCurrentView();
+}
+
+/* ============================================================
+ * Undo / Redo — per-view stacks of mainCanvas snapshots (PNG blobs).
+ * Stacks are cleared whenever we load a different view's canvas.
+ * ============================================================ */
+const UNDO_MAX = 20;
+let undoStack = [];
+let redoStack = [];
+
+function pushUndoState() {
+  return new Promise(res => {
+    mainCanvas.toBlob(blob => {
+      if (blob) {
+        undoStack.push(blob);
+        if (undoStack.length > UNDO_MAX) undoStack.shift();
+        redoStack = [];
+      }
+      updateUndoRedoButtons();
+      res();
+    }, 'image/png');
+  });
+}
+
+function snapshotMainAsBlob() {
+  return new Promise(res => mainCanvas.toBlob(b => res(b), 'image/png'));
+}
+
+async function applySnapshot(blob) {
+  const bmp = await createImageBitmap(blob);
+  mainCtx.fillStyle = PAPER_COLOR;
+  mainCtx.fillRect(0, 0, mainCanvas.width, mainCanvas.height);
+  mainCtx.drawImage(bmp, 0, 0);
+  redrawDisplay();
+}
+
+async function undo() {
+  if (undoStack.length === 0) return;
+  const current = await snapshotMainAsBlob();
+  if (current) redoStack.push(current);
+  const blob = undoStack.pop();
+  await applySnapshot(blob);
+  await saveCurrentView(true);
+  updateUndoRedoButtons();
+}
+async function redo() {
+  if (redoStack.length === 0) return;
+  const current = await snapshotMainAsBlob();
+  if (current) undoStack.push(current);
+  const blob = redoStack.pop();
+  await applySnapshot(blob);
+  await saveCurrentView(true);
+  updateUndoRedoButtons();
+}
+function clearUndoStacks() {
+  undoStack = [];
+  redoStack = [];
+  updateUndoRedoButtons();
+}
+function updateUndoRedoButtons() {
+  const u = document.getElementById('undo-btn');
+  const r = document.getElementById('redo-btn');
+  if (u) u.classList.toggle('disabled', undoStack.length === 0);
+  if (r) r.classList.toggle('disabled', redoStack.length === 0);
+}
+document.getElementById('undo-btn').onclick = undo;
+document.getElementById('redo-btn').onclick = redo;
+displayCanvas.addEventListener('pointerup', endStroke);
+displayCanvas.addEventListener('pointercancel', endStroke);
+displayCanvas.addEventListener('pointerleave', endStroke);
+
+let _penSeen = false;
+window.addEventListener('pointerdown', e => { if (e.pointerType === 'pen') _penSeen = true; }, true);
+function supportsPen() { return _penSeen; }
+
+/* ============================================================
+ * Page navigation
+ * ============================================================ */
+async function flipView(dir) {
+  const views = viewsOf(state.currentBook);
+  const next = state.currentViewIdx + dir;
+  if (next < 0 || next >= views.length) return;
+  exitEditMode();
+  if (lassoSelection) await commitSelection(true);
+  await flushBookSave();
+  await saveCurrentView(true);
+  clearUndoStacks();
+  resetZoom();
+  const frame = document.getElementById('page-frame');
+  frame.classList.add(dir > 0 ? 'flip-out-left' : 'flip-out-right');
+  await sleep(220);
+  state.currentViewIdx = next;
+  state.currentBook.viewIdx = next;
+  await upsertBook(state.currentBook);
+  // Resize frame for new view (single vs spread changes ratio)
+  sizePageFrame();
+  await loadCurrentViewToCanvas();
+  renderTextOverlay();
+  // Reset animation
+  frame.style.transition = 'none';
+  frame.classList.remove('flip-out-left', 'flip-out-right');
+  frame.classList.add(dir > 0 ? 'flip-out-right' : 'flip-out-left');
+  void frame.offsetWidth;
+  frame.style.transition = '';
+  frame.classList.remove('flip-out-left', 'flip-out-right');
+  updatePageCounter();
+  updateNavButtons();
+}
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function updatePageCounter() {
+  const v = currentView();
+  const lbl = counterLabelFor(v, state.currentBook);
+  document.getElementById('counter-label').textContent = lbl.label;
+  document.getElementById('counter-num').textContent = lbl.num;
+}
+function updateNavButtons() {
+  const views = viewsOf(state.currentBook);
+  document.getElementById('prev-view').classList.toggle('disabled', state.currentViewIdx === 0);
+  document.getElementById('next-view').classList.toggle('disabled', state.currentViewIdx === views.length - 1);
+}
+
+document.getElementById('prev-view').onclick = () => flipView(-1);
+document.getElementById('next-view').onclick = () => flipView(+1);
+
+/* ============================================================
+ * Zoom + pan (two-finger pinch / drag)
+ * ============================================================ */
+const zoomState = { zoom: 1, panX: 0, panY: 0 };
+const ZOOM_MIN = 1, ZOOM_MAX = 6;
+let pinchState = null;
+let pinching = false;
+
+function applyZoomTransform() {
+  const z = document.getElementById('zoom-container');
+  z.style.transform = `translate(${zoomState.panX}px, ${zoomState.panY}px) scale(${zoomState.zoom})`;
+  document.getElementById('fit-btn').classList.toggle('hidden', zoomState.zoom <= 1.001 && zoomState.panX === 0 && zoomState.panY === 0);
+}
+function resetZoom() {
+  zoomState.zoom = 1; zoomState.panX = 0; zoomState.panY = 0;
+  applyZoomTransform();
+}
+document.getElementById('fit-btn').onclick = () => resetZoom();
+
+/* Swipe (finger only when a pen has been used) */
+const stage = document.getElementById('canvas-stage');
+let swipeStart = null;
+
+function abortInProgressStroke() {
+  // Don't kill a pen-driven stroke just because a finger touched the screen —
+  // that's almost always palm rest while drawing with the Pencil.
+  if (state.isDrawing && activePointerType !== 'pen') {
+    strokeCtx.clearRect(0, 0, strokeCanvas.width, strokeCanvas.height);
+    state.isDrawing = false;
+    strokePoints = null;
+    activePointerId = null;
+    activePointerType = null;
+    redrawDisplay();
+  }
+}
+
+stage.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) {
+    if (zoomState.zoom > 1.001) { swipeStart = null; return; } // no swipe when zoomed
+    swipeStart = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() };
+    return;
+  }
+  if (e.touches.length === 2) {
+    swipeStart = null;
+    abortInProgressStroke();
+    pinching = true;
+    e.preventDefault();
+    const t1 = e.touches[0], t2 = e.touches[1];
+    pinchState = {
+      startDist: Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY) || 1,
+      startMidX: (t1.clientX + t2.clientX) / 2,
+      startMidY: (t1.clientY + t2.clientY) / 2,
+      startZoom: zoomState.zoom,
+      startPanX: zoomState.panX,
+      startPanY: zoomState.panY,
+    };
+  }
+}, { passive: false });
+
+stage.addEventListener('touchmove', e => {
+  if (!pinching || !pinchState || e.touches.length < 2) return;
+  e.preventDefault();
+  const t1 = e.touches[0], t2 = e.touches[1];
+  const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY) || 1;
+  const midX = (t1.clientX + t2.clientX) / 2;
+  const midY = (t1.clientY + t2.clientY) / 2;
+  const newZoom = Math.max(0.6, Math.min(ZOOM_MAX, pinchState.startZoom * (dist / pinchState.startDist)));
+
+  // Zoom around the pinch midpoint: compensate pan so the screen point under the
+  // midpoint stays put when the scale changes.
+  const z = document.getElementById('zoom-container');
+  const r = z.getBoundingClientRect();
+  const cx = r.left + r.width  / 2;
+  const cy = r.top  + r.height / 2;
+  // Distance from container center to ORIGINAL midpoint (in screen px)
+  const dx = pinchState.startMidX - cx + (zoomState.panX - pinchState.startPanX);
+  const dy = pinchState.startMidY - cy + (zoomState.panY - pinchState.startPanY);
+  const ratio = newZoom / pinchState.startZoom;
+  const dragDx = midX - pinchState.startMidX;
+  const dragDy = midY - pinchState.startMidY;
+
+  zoomState.zoom = newZoom;
+  zoomState.panX = pinchState.startPanX + dragDx + (pinchState.startMidX - cx) * (1 - ratio);
+  zoomState.panY = pinchState.startPanY + dragDy + (pinchState.startMidY - cy) * (1 - ratio);
+  applyZoomTransform();
+}, { passive: false });
+
+stage.addEventListener('touchend', e => {
+  if (pinching && e.touches.length < 2) {
+    pinching = false;
+    pinchState = null;
+    if (zoomState.zoom <= 1.05) resetZoom();
+    return;
+  }
+  if (!swipeStart) return;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - swipeStart.x;
+  const dy = t.clientY - swipeStart.y;
+  const dt = Date.now() - swipeStart.t;
+  swipeStart = null;
+  if (dt < 600 && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+    flipView(dx < 0 ? +1 : -1);
+  }
+});
+stage.addEventListener('touchcancel', () => {
+  pinching = false; pinchState = null; swipeStart = null;
+});
+
+/* Desktop / laptop: trackpad pinch and Ctrl/Cmd + scroll send wheel events with
+ * ctrlKey/metaKey set. The browser default would zoom the entire page (including
+ * toolbars). Capture them and apply our canvas-only zoom instead, around the cursor. */
+stage.addEventListener('wheel', e => {
+  // Any wheel/trackpad gesture over the canvas zooms — the canvas viewport
+  // doesn't need to scroll. Cmd/Ctrl + wheel still works (and trackpad pinch
+  // automatically sends ctrlKey too).
+  e.preventDefault();
+  const factor = Math.exp(-e.deltaY * 0.01);
+  const newZoom = Math.max(0.6, Math.min(ZOOM_MAX, zoomState.zoom * factor));
+  const z = document.getElementById('zoom-container');
+  const r = z.getBoundingClientRect();
+  const cx = r.left + r.width  / 2;
+  const cy = r.top  + r.height / 2;
+  const ratio = newZoom / zoomState.zoom;
+  zoomState.panX += (e.clientX - cx) * (1 - ratio);
+  zoomState.panY += (e.clientY - cy) * (1 - ratio);
+  zoomState.zoom = newZoom;
+  applyZoomTransform();
+  if (zoomState.zoom <= 1.05) resetZoom();
+}, { passive: false });
+
+/* Also block the browser's "Ctrl/Cmd + plus/minus/0" zoom shortcuts in the draw
+ * view so the toolbars don't get scaled by accident. */
+window.addEventListener('keydown', e => {
+  if (state.view !== 'draw') return;
+  if (e.target.matches && e.target.matches('input, textarea, [contenteditable="true"]')) return;
+  const ctrl = e.ctrlKey || e.metaKey;
+  if (ctrl && (e.key === '+' || e.key === '=' || e.key === '-' || e.key === '0')) {
+    e.preventDefault();
+    if (e.key === '0') resetZoom();
+    return;
+  }
+  if (ctrl && (e.key === 'c' || e.key === 'C')) {
+    if (lassoSelection) { e.preventDefault(); copySelectionToClipboard(); }
+    return;
+  }
+  if (ctrl && (e.key === 'x' || e.key === 'X')) {
+    if (lassoSelection) { e.preventDefault(); cutSelectionToClipboard(); }
+    return;
+  }
+  if (ctrl && (e.key === 'v' || e.key === 'V')) {
+    if (selectionClipboard) { e.preventDefault(); pasteSelectionFromClipboard(); }
+    return;
+  }
+  // Plain keys
+  if (!ctrl && (e.key === 'Delete' || e.key === 'Backspace')) {
+    if (lassoSelection) {
+      e.preventDefault();
+      // Discard the floating selection (paper already showing where it was)
+      document.getElementById('selection-overlay').classList.remove('active');
+      lassoSelection = null;
+    }
+  }
+});
+
+/* ============================================================
+ * Selection clipboard — Cmd/Ctrl + C/X/V on a floating lasso selection.
+ * ============================================================ */
+let selectionClipboard = null;  // { canvas, w, h }
+
+function copySelectionToClipboard() {
+  if (!lassoSelection) return;
+  const c = document.createElement('canvas');
+  c.width = lassoSelection.w;
+  c.height = lassoSelection.h;
+  c.getContext('2d').drawImage(lassoSelection.canvas, 0, 0);
+  selectionClipboard = { canvas: c, w: lassoSelection.w, h: lassoSelection.h };
+  updateLassoToolbar();
+  if (typeof toast === 'function') toast('Selection copied');
+}
+function cutSelectionToClipboard() {
+  if (!lassoSelection) return;
+  copySelectionToClipboard();
+  // Discard floating selection without re-baking — original pixels were already
+  // erased when the lasso was created.
+  document.getElementById('selection-overlay').classList.remove('active');
+  lassoSelection = null;
+  updateLassoToolbar();
+  if (typeof toast === 'function') toast('Selection cut');
+}
+function deleteSelection() {
+  if (!lassoSelection) return;
+  document.getElementById('selection-overlay').classList.remove('active');
+  lassoSelection = null;
+  updateLassoToolbar();
+}
+
+document.getElementById('lasso-copy'  ).onclick = () => { copySelectionToClipboard(); };
+document.getElementById('lasso-cut'   ).onclick = () => { cutSelectionToClipboard(); };
+document.getElementById('lasso-paste' ).onclick = () => { pasteSelectionFromClipboard(); };
+document.getElementById('lasso-delete').onclick = () => { deleteSelection(); };
+function updateLassoToolbar() {
+  const tb  = document.getElementById('lasso-toolbar');
+  if (!tb) return;
+  const haveSel  = !!lassoSelection;
+  const haveClip = !!selectionClipboard;
+  const visible  = state.tool === 'lasso' && (haveSel || haveClip);
+  tb.classList.toggle('hidden', !visible);
+  document.getElementById('lasso-copy'  ).disabled = !haveSel;
+  document.getElementById('lasso-cut'   ).disabled = !haveSel;
+  document.getElementById('lasso-paste' ).disabled = !haveClip;
+  document.getElementById('lasso-delete').disabled = !haveSel;
+}
+
+async function pasteSelectionFromClipboard() {
+  if (!selectionClipboard) return;
+  if (lassoSelection) await commitSelection();
+  await pushUndoState();
+  const w = selectionClipboard.w, h = selectionClipboard.h;
+  // Place at view center (in canvas coords).
+  const cx = mainCanvas.width  / 2 - w / 2;
+  const cy = mainCanvas.height / 2 - h / 2;
+  const sel = document.createElement('canvas');
+  sel.width = w; sel.height = h;
+  sel.getContext('2d').drawImage(selectionClipboard.canvas, 0, 0);
+  lassoSelection = {
+    canvas: sel,
+    originalX: Math.max(0, Math.floor(cx)),
+    originalY: Math.max(0, Math.floor(cy)),
+    w, h, tx: 0, ty: 0, sx: 1, sy: 1, rot: 0,
+  };
+  const overlayCanvas = document.getElementById('sel-canvas');
+  overlayCanvas.width = w; overlayCanvas.height = h;
+  overlayCanvas.getContext('2d').drawImage(sel, 0, 0);
+  applySelectionLayout();
+  document.getElementById('selection-overlay').classList.add('active');
+  setTool('lasso');
+  if (typeof toast === 'function') toast('Pasted');
+}
+
+/* ============================================================
+ * Toolbar wiring
+ * ============================================================ */
+function setTool(t) {
+  // Auto-commit any active lasso selection when leaving lasso mode
+  if (state.tool === 'lasso' && t !== 'lasso' && lassoSelection) commitSelection(true);
+  state.tool = t;
+  document.getElementById('tool-pencil').classList.toggle('active', t === 'pencil');
+  document.getElementById('tool-eraser').classList.toggle('active', t === 'eraser');
+  document.getElementById('tool-text'  ).classList.toggle('active', t === 'text');
+  document.getElementById('tool-lasso' ).classList.toggle('active', t === 'lasso');
+  document.getElementById('textbox-layer').classList.toggle('text-active', t === 'text');
+  if (t !== 'text') deselectTextBox();
+  if (typeof updateLassoToolbar === 'function') updateLassoToolbar();
+}
+document.getElementById('tool-pencil').onclick = () => setTool('pencil');
+document.getElementById('tool-eraser').onclick = () => setTool('eraser');
+document.getElementById('tool-text'  ).onclick = () => setTool('text');
+document.getElementById('tool-lasso' ).onclick = () => setTool('lasso');
+
+const sizeSlider = document.getElementById('brush-size');
+const sizeDot    = document.getElementById('size-dot');
+function updateSizeReadout() {
+  const d = Math.max(2, Math.min(18, state.brushSize));
+  sizeDot.style.width = d + 'px'; sizeDot.style.height = d + 'px';
+}
+sizeSlider.oninput = () => { state.brushSize = +sizeSlider.value; updateSizeReadout(); };
+updateSizeReadout();
+
+const opSlider = document.getElementById('brush-opacity');
+const opDot    = document.getElementById('opacity-dot');
+function updateOpReadout() {
+  // opacity dot: same color, faded by alpha
+  opDot.style.width = '14px'; opDot.style.height = '14px';
+  opDot.style.background = GREYS[state.greyIdx].hex;
+  opDot.style.opacity = state.opacity.toFixed(2);
+}
+opSlider.oninput = () => { state.opacity = (+opSlider.value) / 100; updateOpReadout(); };
+updateOpReadout();
+
+function renderSwatches() {
+  const wrap = document.getElementById('swatches');
+  wrap.innerHTML = '';
+  GREYS.forEach((g, i) => {
+    const el = document.createElement('button');
+    el.className = 'swatch' + (i === state.greyIdx ? ' active' : '');
+    el.innerHTML = `<div class="dot" style="background:${g.hex}"></div>`;
+    el.onclick = () => {
+      state.greyIdx = i;
+      setTool('pencil');
+      renderSwatches();
+      updateOpReadout();
+    };
+    wrap.appendChild(el);
+  });
+}
+renderSwatches();
+
+document.getElementById('back-to-projects').onclick = async () => {
+  exitEditMode();
+  await flushBookSave();
+  await saveCurrentView(true);
+  goProjects();
+};
+document.getElementById('open-thumbs').onclick = goThumbs;
+document.getElementById('open-menu').onclick = (e) => {
+  showPopover([
+    { label: 'Rename',           icon: ICONS.rename, onClick: () => renameBook(state.currentBook) },
+    'sep',
+    { label: 'Export PDF',       icon: ICONS.pdf,    onClick: () => exportPDF(state.currentBook) },
+    { label: 'Export PNGs (zip)', icon: ICONS.zip,   onClick: () => exportZIP(state.currentBook) },
+    'sep',
+    { label: 'Delete book',      icon: ICONS.trash,  danger: true, onClick: () => confirmDelete(state.currentBook) },
+  ], e.currentTarget);
+};
+
+/* ============================================================
+ * Text boxes
+ * ============================================================ */
+function uid() { return 't_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,7); }
+
+function pageBoxes(pageNum) {
+  const b = state.currentBook;
+  if (!b.textBoxes) b.textBoxes = {};
+  const k = `p${pageNum}`;
+  if (!b.textBoxes[k]) b.textBoxes[k] = [];
+  return b.textBoxes[k];
+}
+function frameScale() {
+  // Untransformed CSS pixels per canvas pixel — for laying out children inside zoom-container.
+  const frame = document.getElementById('page-frame');
+  return frame.clientWidth / displayCanvas.width;
+}
+function frameScreenScale() {
+  // Screen pixels per canvas pixel — accounts for zoom transform. Use for input/drag mapping.
+  const r = displayCanvas.getBoundingClientRect();
+  return r.width / displayCanvas.width;
+}
+
+let selectedBox = null;  // { box, pageNum, el }
+let editingBox  = null;
+let bookSaveTimer = null;
+
+function saveCurrentBookSoon() {
+  if (bookSaveTimer) clearTimeout(bookSaveTimer);
+  bookSaveTimer = setTimeout(async () => {
+    state.currentBook.updatedAt = Date.now();
+    await upsertBook(state.currentBook);
+    bookSaveTimer = null;
+  }, 350);
+}
+async function flushBookSave() {
+  if (bookSaveTimer) { clearTimeout(bookSaveTimer); bookSaveTimer = null; }
+  if (state.currentBook) {
+    state.currentBook.updatedAt = Date.now();
+    await upsertBook(state.currentBook);
+  }
+}
+
+function clearTextOverlay() {
+  const layer = document.getElementById('textbox-layer');
+  layer.innerHTML = '';
+  selectedBox = null;
+  editingBox = null;
+  hideTextToolbar();
+}
+
+function renderTextOverlay() {
+  clearTextOverlay();
+  const v = currentView();
+  const b = state.currentBook;
+  const layer = document.getElementById('textbox-layer');
+  for (const pn of v.pages) {
+    const boxes = (b.textBoxes && b.textBoxes[`p${pn}`]) || [];
+    for (const box of boxes) {
+      const el = createTextBoxElement(box, pn);
+      layer.appendChild(el);
+    }
+  }
+  layoutTextBoxes();
+}
+
+function layoutTextBoxes() {
+  const s = frameScale();
+  const layer = document.getElementById('textbox-layer');
+  const v = currentView();
+  const b = state.currentBook;
+  for (const el of layer.querySelectorAll('.textbox')) {
+    const id = el.dataset.id;
+    const pn = +el.dataset.page;
+    const box = pageBoxes(pn).find(bb => bb.id === id);
+    if (!box) continue;
+    const xOffset = (v.type === 'spread' && pn === v.pages[1]) ? b.w : 0;
+    el.style.left      = ((box.x + xOffset) * s) + 'px';
+    el.style.top       = (box.y * s) + 'px';
+    el.style.width     = (box.w * s) + 'px';
+    el.style.height    = (box.h * s) + 'px';
+    el.style.fontSize  = (box.size * s) + 'px';
+    el.style.textAlign = box.align || 'left';
+    const ta = el.querySelector('.textbox-input');
+    if (ta) ta.style.textAlign = box.align || 'left';
+  }
+  if (selectedBox) positionTextToolbar();
+}
+
+function createTextBoxElement(box, pageNum) {
+  const el = document.createElement('div');
+  el.className = 'textbox';
+  el.dataset.id = box.id;
+  el.dataset.page = pageNum;
+
+  const ta = document.createElement('textarea');
+  ta.className = 'textbox-input';
+  ta.placeholder = 'Text';
+  ta.value = box.text || '';
+  ta.setAttribute('readonly', '');
+  ta.spellcheck = false;
+  ta.autocapitalize = 'sentences';
+  ta.autocomplete = 'off';
+  ta.setAttribute('autocorrect', 'off');
+  ta.setAttribute('inputmode', 'text');
+  el.appendChild(ta);
+
+  const handle = document.createElement('div');
+  handle.className = 'resize-handle';
+  el.appendChild(handle);
+
+  attachTextBoxHandlers(el, box, pageNum);
+  return el;
+}
+
+function attachTextBoxHandlers(el, box, pageNum) {
+  let dragState = null;   // for moving
+  let resizeState = null; // for resizing
+
+  const handle = el.querySelector('.resize-handle');
+  handle.addEventListener('pointerdown', e => {
+    if (state.tool !== 'text') return;
+    e.stopPropagation();
+    e.preventDefault();
+    handle.setPointerCapture(e.pointerId);
+    resizeState = { startX: e.clientX, startY: e.clientY, origW: box.w, origH: box.h };
+    selectTextBox(box, +el.dataset.page, el, false);
+  });
+  handle.addEventListener('pointermove', e => {
+    if (!resizeState) return;
+    const s = frameScreenScale();
+    box.w = Math.max(40,  resizeState.origW + (e.clientX - resizeState.startX) / s);
+    box.h = Math.max(box.size + 8, resizeState.origH + (e.clientY - resizeState.startY) / s);
+    layoutTextBoxes();
+  });
+  handle.addEventListener('pointerup', () => {
+    if (!resizeState) return;
+    resizeState = null;
+    saveCurrentBookSoon();
+  });
+
+  el.addEventListener('pointerdown', e => {
+    if (state.tool !== 'text') return;
+    if (e.target === handle) return;
+    if (editingBox && editingBox.box.id === box.id) return;  // text editing — let cursor work
+    e.stopPropagation();
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    dragState = { startX: e.clientX, startY: e.clientY, origX: box.x, origY: box.y, dragging: false };
+    selectTextBox(box, +el.dataset.page, el, false);
+  });
+  el.addEventListener('pointermove', e => {
+    if (!dragState) return;
+    const dx = e.clientX - dragState.startX;
+    const dy = e.clientY - dragState.startY;
+    if (!dragState.dragging && Math.hypot(dx, dy) > 4) dragState.dragging = true;
+    if (dragState.dragging) {
+      const s = frameScreenScale();
+      box.x = dragState.origX + dx / s;
+      box.y = dragState.origY + dy / s;
+      layoutTextBoxes();
+    }
+  });
+  el.addEventListener('pointerup', e => {
+    if (!dragState) return;
+    const wasDragging = dragState.dragging;
+    dragState = null;
+    try { el.releasePointerCapture(e.pointerId); } catch (_) {}
+    if (!wasDragging) {
+      // Tap: if already selected and not editing, enter edit mode
+      if (selectedBox && selectedBox.box.id === box.id && (!editingBox || editingBox.box.id !== box.id)) {
+        enterEditMode(box, +el.dataset.page, el);
+      }
+      return;
+    }
+    // Drag complete: page reassignment if box center crossed gutter
+    const v = currentView();
+    let moved = false;
+    if (v.type === 'spread') {
+      const cx = box.x + box.w / 2;
+      const b = state.currentBook;
+      const curPn = +el.dataset.page;
+      if (curPn === v.pages[0] && cx > b.w) {
+        movePageBox(box, curPn, v.pages[1], -b.w); moved = true;
+      } else if (curPn === v.pages[1] && cx < 0) {
+        movePageBox(box, curPn, v.pages[0], +b.w); moved = true;
+      }
+    }
+    saveCurrentBookSoon();
+    if (moved) {
+      renderTextOverlay();
+      const newEl = document.querySelector(`.textbox[data-id="${box.id}"]`);
+      if (newEl) selectTextBox(box, +newEl.dataset.page, newEl, false);
+    }
+  });
+}
+
+function movePageBox(box, fromPage, toPage, xDelta) {
+  const src = pageBoxes(fromPage);
+  const i = src.findIndex(b => b.id === box.id);
+  if (i >= 0) src.splice(i, 1);
+  box.x = box.x + xDelta;
+  pageBoxes(toPage).push(box);
+}
+
+function selectTextBox(box, pageNum, el, edit) {
+  if (selectedBox && selectedBox.box.id !== box.id) {
+    selectedBox.el.classList.remove('selected');
+  }
+  if (editingBox && editingBox.box.id !== box.id) {
+    exitEditMode();
+  }
+  selectedBox = { box, pageNum, el };
+  el.classList.add('selected');
+  showTextToolbar();
+  positionTextToolbar();
+  if (edit) enterEditMode(box, pageNum, el);
+}
+function deselectTextBox() {
+  if (editingBox) exitEditMode();
+  if (selectedBox) {
+    selectedBox.el.classList.remove('selected');
+    selectedBox = null;
+  }
+  hideTextToolbar();
+}
+
+function enterEditMode(box, pageNum, el) {
+  editingBox = { box, pageNum, el };
+  el.classList.add('editing');
+  const ta = el.querySelector('.textbox-input');
+  ta.removeAttribute('readonly');
+  // Focus immediately while still inside the user-gesture stack so iOS shows keyboard
+  ta.focus();
+  const len = ta.value.length;
+  try { ta.setSelectionRange(len, len); } catch (_) {}
+  ta.oninput = () => {
+    box.text = ta.value;
+    /* legacy */ ;(/ /g, ' ');
+    saveCurrentBookSoon();
+  };
+}
+function exitEditMode() {
+  if (!editingBox) return;
+  const { el } = editingBox;
+  const ta = el.querySelector('.textbox-input');
+  if (ta) {
+    ta.setAttribute('readonly', '');
+    try { ta.blur(); } catch (_) {}
+  }
+  el.classList.remove('editing');
+  editingBox = null;
+}
+
+function showTextToolbar() { document.getElementById('text-toolbar').classList.remove('hidden'); }
+function hideTextToolbar() { document.getElementById('text-toolbar').classList.add('hidden'); }
+function positionTextToolbar() {
+  if (!selectedBox) return;
+  const tt = document.getElementById('text-toolbar');
+  const r  = selectedBox.el.getBoundingClientRect();
+  const tr = tt.getBoundingClientRect();
+  let left = r.left + r.width / 2 - tr.width / 2;
+  let top  = r.top - tr.height - 8;
+  if (top < 70) top = r.bottom + 8;
+  left = Math.max(12, Math.min(left, window.innerWidth - tr.width - 12));
+  tt.style.left = left + 'px';
+  tt.style.top  = top + 'px';
+  document.getElementById('tt-size').textContent = String(Math.round(selectedBox.box.size));
+  ['l','c','r'].forEach(a => document.getElementById(`tt-align-${a}`).classList.remove('active'));
+  const map = { left: 'l', center: 'c', right: 'r' };
+  const k = map[selectedBox.box.align || 'left'];
+  if (k) document.getElementById(`tt-align-${k}`).classList.add('active');
+}
+
+document.getElementById('tt-size-up').onclick = () => {
+  if (!selectedBox) return;
+  selectedBox.box.size = Math.min(160, selectedBox.box.size + 4);
+  layoutTextBoxes(); positionTextToolbar(); saveCurrentBookSoon();
+};
+document.getElementById('tt-size-down').onclick = () => {
+  if (!selectedBox) return;
+  selectedBox.box.size = Math.max(8, selectedBox.box.size - 4);
+  layoutTextBoxes(); positionTextToolbar(); saveCurrentBookSoon();
+};
+['l','c','r'].forEach(a => {
+  document.getElementById(`tt-align-${a}`).onclick = () => {
+    if (!selectedBox) return;
+    selectedBox.box.align = ({l:'left', c:'center', r:'right'})[a];
+    layoutTextBoxes(); positionTextToolbar(); saveCurrentBookSoon();
+  };
+});
+document.getElementById('tt-delete').onclick = () => {
+  if (!selectedBox) return;
+  const { box, pageNum } = selectedBox;
+  const arr = pageBoxes(pageNum);
+  const i = arr.findIndex(bb => bb.id === box.id);
+  if (i >= 0) arr.splice(i, 1);
+  deselectTextBox();
+  renderTextOverlay();
+  saveCurrentBookSoon();
+};
+
+/* Tap on empty layer area (text tool active): deselect, or create a new box */
+document.getElementById('textbox-layer').addEventListener('pointerdown', e => {
+  if (state.tool !== 'text') return;
+  if (e.target.closest('.textbox')) return;
+  e.preventDefault();
+  if (selectedBox) { deselectTextBox(); return; }
+  const layer = document.getElementById('textbox-layer');
+  const rect = layer.getBoundingClientRect();
+  const s = frameScreenScale();
+  const localX = (e.clientX - rect.left) / s;
+  const localY = (e.clientY - rect.top)  / s;
+  const v = currentView();
+  const b = state.currentBook;
+  let pageNum = v.pages[0], pageX = localX;
+  if (v.type === 'spread' && localX > b.w) { pageNum = v.pages[1]; pageX = localX - b.w; }
+  const defaultSize = Math.max(20, Math.round(b.h / 45));
+  const defaultW = Math.min(b.w * 0.6, 360);
+  const defaultH = defaultSize * 3 + 16;
+  const box = {
+    id: uid(),
+    x: Math.max(0, Math.min(b.w - defaultW, pageX - defaultW / 2)),
+    y: Math.max(0, Math.min(b.h - defaultH, pageY_clamp(localY, b.h, defaultH))),
+    w: defaultW, h: defaultH,
+    text: '', size: defaultSize, align: 'left',
+  };
+  pageBoxes(pageNum).push(box);
+  saveCurrentBookSoon();
+  const el = createTextBoxElement(box, pageNum);
+  layer.appendChild(el);
+  layoutTextBoxes();
+  selectTextBox(box, pageNum, el, true);
+});
+function pageY_clamp(y, pageH, boxH) { return Math.max(0, Math.min(pageH - boxH, y - boxH / 2)); }
+
+/* Bake a textbox onto a 2D canvas (used by thumbnails and exports). */
+function drawTextBoxOnCanvas(ctx, tb) {
+  if (!tb.text) return;
+  ctx.save();
+  ctx.fillStyle = '#1a1a1a';
+  ctx.font = `${tb.size}px "Courier New", "Courier", ui-monospace, monospace`;
+  ctx.textBaseline = 'top';
+  const lineHeight = tb.size * 1.3;
+  const padX = 6, padY = 4;
+  const innerW = tb.w - padX * 2;
+  const lines = wrapMonospaceText(ctx, tb.text, innerW);
+  for (let i = 0; i < lines.length; i++) {
+    const yy = tb.y + padY + i * lineHeight;
+    if (yy + lineHeight > tb.y + tb.h) break;
+    let xx = tb.x + padX;
+    const w = ctx.measureText(lines[i]).width;
+    if (tb.align === 'center') xx = tb.x + (tb.w - w) / 2;
+    if (tb.align === 'right')  xx = tb.x + tb.w - padX - w;
+    ctx.fillText(lines[i], xx, yy);
+  }
+  ctx.restore();
+}
+function wrapMonospaceText(ctx, text, maxW) {
+  const out = [];
+  for (const para of String(text).split('\n')) {
+    if (!para) { out.push(''); continue; }
+    const tokens = para.split(/(\s+)/);
+    let line = '';
+    for (const tok of tokens) {
+      const test = line + tok;
+      if (ctx.measureText(test).width > maxW && line) {
+        out.push(line.replace(/\s+$/, ''));
+        line = tok.replace(/^\s+/, '');
+      } else {
+        line = test;
+      }
+    }
+    if (line) out.push(line);
+  }
+  return out.length ? out : [''];
+}
+
+/* ============================================================
+ * Lasso tool
+ *
+ *   - Drag with the lasso tool active to draw a freehand selection path.
+ *   - On lift, the path closes and the enclosed pixels become a floating
+ *     selection that can be moved (drag), freely scaled (corner handles
+ *     or two-finger pinch), and rotated (top handle or two-finger twist).
+ *   - Tap on the canvas outside the selection to commit it back into
+ *     the page at its new transform. Switching tools or flipping the
+ *     page also commits.
+ *   - The pre-extract canvas state is pushed to the undo stack as a
+ *     single entry, so one undo reverts the whole lasso operation.
+ * ============================================================ */
+let lassoSelection  = null;   // { canvas, originalX, originalY, w, h, tx, ty, sx, sy, rot }
+let lassoPathPoints = null;
+let lassoActivePtr  = null;
+let selMoveState    = null;
+let selResizeState  = null;
+let selRotateState  = null;
+let selPinchState   = null;
+
+function lassoPointFromEvent(e) {
+  const rect = displayCanvas.getBoundingClientRect();
+  return {
+    x: (e.clientX - rect.left) * (displayCanvas.width  / rect.width),
+    y: (e.clientY - rect.top)  * (displayCanvas.height / rect.height),
+  };
+}
+function screenToCanvasXY(sx, sy) {
+  const rect = displayCanvas.getBoundingClientRect();
+  return {
+    x: (sx - rect.left) * (displayCanvas.width  / rect.width),
+    y: (sy - rect.top)  * (displayCanvas.height / rect.height),
+  };
+}
+
+function applySelectionLayout() {
+  if (!lassoSelection) return;
+  const s = frameScale();
+  const sel = lassoSelection;
+  const ov = document.getElementById('selection-overlay');
+  ov.style.left   = (sel.originalX * s) + 'px';
+  ov.style.top    = (sel.originalY * s) + 'px';
+  ov.style.width  = (sel.w * s) + 'px';
+  ov.style.height = (sel.h * s) + 'px';
+  ov.style.transform =
+    `translate(${sel.tx * s}px, ${sel.ty * s}px) ` +
+    `rotate(${sel.rot}rad) ` +
+    `scale(${sel.sx}, ${sel.sy})`;
+}
+
+function updateLassoSVG() {
+  const poly = document.getElementById('lasso-poly');
+  if (!lassoPathPoints) { poly.setAttribute('points', ''); return; }
+  poly.setAttribute('points',
+    lassoPathPoints.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '));
+}
+
+async function extractSelectionFromPath(pathPoints) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of pathPoints) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+  minX = Math.max(0, Math.floor(minX));
+  minY = Math.max(0, Math.floor(minY));
+  maxX = Math.min(mainCanvas.width,  Math.ceil(maxX));
+  maxY = Math.min(mainCanvas.height, Math.ceil(maxY));
+  const w = maxX - minX, h = maxY - minY;
+  if (w < 4 || h < 4) return;
+
+  // Push undo BEFORE extracting — single undo reverts the whole operation.
+  await pushUndoState();
+
+  // Extract masked pixels into the selection canvas.
+  const sel = document.createElement('canvas');
+  sel.width = w; sel.height = h;
+  const sctx = sel.getContext('2d');
+  sctx.beginPath();
+  for (let i = 0; i < pathPoints.length; i++) {
+    const x = pathPoints[i].x - minX;
+    const y = pathPoints[i].y - minY;
+    if (i === 0) sctx.moveTo(x, y); else sctx.lineTo(x, y);
+  }
+  sctx.closePath();
+  sctx.clip();
+  sctx.drawImage(mainCanvas, -minX, -minY);
+
+  // Knock out paper-colored pixels so only the linework remains opaque.
+  // Pixels close to paper become transparent; mid-distance ones get a smooth
+  // alpha ramp (preserves anti-aliased edges of strokes).
+  const imageData = sctx.getImageData(0, 0, w, h);
+  const data = imageData.data;
+  const PR = 246, PG = 243, PB = 235;        // matches PAPER_COLOR
+  const NEAR = 12;                            // paper if within this max-channel-distance
+  const FAR  = 48;                            // fully opaque beyond this
+  const SPAN = FAR - NEAR;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] === 0) continue;
+    const dr = Math.abs(data[i]     - PR);
+    const dg = Math.abs(data[i + 1] - PG);
+    const db = Math.abs(data[i + 2] - PB);
+    const dist = dr > dg ? (dr > db ? dr : db) : (dg > db ? dg : db);
+    if (dist <= NEAR) {
+      data[i + 3] = 0;
+    } else if (dist < FAR) {
+      data[i + 3] = Math.round(((dist - NEAR) / SPAN) * data[i + 3]);
+    }
+  }
+  sctx.putImageData(imageData, 0, 0);
+
+  // Erase the same region from mainCanvas (replace with paper color).
+  mainCtx.save();
+  mainCtx.beginPath();
+  for (let i = 0; i < pathPoints.length; i++) {
+    if (i === 0) mainCtx.moveTo(pathPoints[i].x, pathPoints[i].y);
+    else          mainCtx.lineTo(pathPoints[i].x, pathPoints[i].y);
+  }
+  mainCtx.closePath();
+  mainCtx.clip();
+  mainCtx.fillStyle = PAPER_COLOR;
+  mainCtx.fillRect(0, 0, mainCanvas.width, mainCanvas.height);
+  mainCtx.restore();
+
+  redrawDisplay();
+  saveCurrentView();
+
+  lassoSelection = {
+    canvas: sel, originalX: minX, originalY: minY,
+    w, h, tx: 0, ty: 0, sx: 1, sy: 1, rot: 0,
+  };
+  const overlayCanvas = document.getElementById('sel-canvas');
+  overlayCanvas.width = w; overlayCanvas.height = h;
+  overlayCanvas.getContext('2d').drawImage(sel, 0, 0);
+  applySelectionLayout();
+  document.getElementById('selection-overlay').classList.add('active');
+  updateLassoToolbar();
+}
+
+/* commitSelection — bake the floating selection back into mainCanvas at its
+ * current transform. Does NOT push undo (the extract already did). */
+async function commitSelection() {
+  if (!lassoSelection) return;
+  const sel = lassoSelection;
+  mainCtx.save();
+  const cx = sel.originalX + sel.w / 2 + sel.tx;
+  const cy = sel.originalY + sel.h / 2 + sel.ty;
+  mainCtx.translate(cx, cy);
+  mainCtx.rotate(sel.rot);
+  mainCtx.scale(sel.sx, sel.sy);
+  mainCtx.drawImage(sel.canvas, -sel.w / 2, -sel.h / 2);
+  mainCtx.restore();
+  redrawDisplay();
+  saveCurrentView();
+  document.getElementById('selection-overlay').classList.remove('active');
+  lassoSelection = null;
+  updateLassoToolbar();
+}
+
+/* ----- Lasso path drawing on the canvas ----- */
+displayCanvas.addEventListener('pointerdown', e => {
+  if (state.tool !== 'lasso') return;
+  if (pinching) return;
+  if (e.pointerType === 'touch' && supportsPen()) return;
+  if (lassoSelection) {
+    // Tap-or-drag on canvas while a selection is floating: commit, then start a
+    // fresh path with the same gesture.
+    commitSelection();
+  }
+  e.preventDefault();
+  lassoActivePtr = e.pointerId;
+  displayCanvas.setPointerCapture(e.pointerId);
+  lassoPathPoints = [lassoPointFromEvent(e)];
+  updateLassoSVG();
+});
+displayCanvas.addEventListener('pointermove', e => {
+  if (state.tool !== 'lasso') return;
+  if (lassoActivePtr !== e.pointerId || !lassoPathPoints) return;
+  e.preventDefault();
+  const events = (typeof e.getCoalescedEvents === 'function') ? e.getCoalescedEvents() : [e];
+  for (const ev of events) lassoPathPoints.push(lassoPointFromEvent(ev));
+  updateLassoSVG();
+});
+function lassoPointerEnd(e) {
+  if (state.tool !== 'lasso') return;
+  if (lassoActivePtr === null || (e && lassoActivePtr !== e.pointerId)) return;
+  lassoActivePtr = null;
+  const pts = lassoPathPoints;
+  lassoPathPoints = null;
+  updateLassoSVG();
+  if (!pts || pts.length < 4) return;
+  extractSelectionFromPath(pts);
+}
+displayCanvas.addEventListener('pointerup',     lassoPointerEnd);
+displayCanvas.addEventListener('pointercancel', lassoPointerEnd);
+
+/* ----- Selection overlay: drag to move ----- */
+const selOverlay = document.getElementById('selection-overlay');
+selOverlay.addEventListener('pointerdown', e => {
+  if (state.tool !== 'lasso' || !lassoSelection) return;
+  if (e.target.classList && e.target.classList.contains('sel-handle')) return;
+  e.stopPropagation();
+  e.preventDefault();
+  selOverlay.setPointerCapture(e.pointerId);
+  selMoveState = {
+    pid: e.pointerId,
+    startX: e.clientX, startY: e.clientY,
+    startTx: lassoSelection.tx, startTy: lassoSelection.ty,
+  };
+});
+selOverlay.addEventListener('pointermove', e => {
+  if (!selMoveState || selMoveState.pid !== e.pointerId) return;
+  e.preventDefault();
+  const s = frameScreenScale();
+  lassoSelection.tx = selMoveState.startTx + (e.clientX - selMoveState.startX) / s;
+  lassoSelection.ty = selMoveState.startTy + (e.clientY - selMoveState.startY) / s;
+  applySelectionLayout();
+});
+selOverlay.addEventListener('pointerup', e => {
+  if (selMoveState && selMoveState.pid === e.pointerId) {
+    try { selOverlay.releasePointerCapture(e.pointerId); } catch (_) {}
+    selMoveState = null;
+  }
+});
+
+/* ----- Corner handles: free non-uniform scale around opposite corner ----- */
+for (const corner of ['tl', 'tr', 'bl', 'br']) {
+  const el = document.querySelector(`.h-${corner}`);
+  el.addEventListener('pointerdown', e => {
+    if (!lassoSelection) return;
+    e.stopPropagation();
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    const sel = lassoSelection;
+    const oppLocal = {
+      tl: { x: +sel.w/2, y: +sel.h/2 },
+      tr: { x: -sel.w/2, y: +sel.h/2 },
+      bl: { x: +sel.w/2, y: -sel.h/2 },
+      br: { x: -sel.w/2, y: -sel.h/2 },
+    }[corner];
+    const cosR = Math.cos(sel.rot), sinR = Math.sin(sel.rot);
+    const ox = oppLocal.x * sel.sx, oy = oppLocal.y * sel.sy;
+    const oppRotX = ox * cosR - oy * sinR;
+    const oppRotY = ox * sinR + oy * cosR;
+    const cx = sel.originalX + sel.w/2 + sel.tx;
+    const cy = sel.originalY + sel.h/2 + sel.ty;
+    selResizeState = {
+      pid: e.pointerId,
+      fixed: { x: cx + oppRotX, y: cy + oppRotY },
+      signX: (corner === 'tl' || corner === 'bl') ? -1 : +1,
+      signY: (corner === 'tl' || corner === 'tr') ? -1 : +1,
+    };
+  });
+  el.addEventListener('pointermove', e => {
+    if (!selResizeState || selResizeState.pid !== e.pointerId) return;
+    e.preventDefault();
+    const sel = lassoSelection;
+    const finger = screenToCanvasXY(e.clientX, e.clientY);
+    const dx = finger.x - selResizeState.fixed.x;
+    const dy = finger.y - selResizeState.fixed.y;
+    const cN = Math.cos(-sel.rot), sN = Math.sin(-sel.rot);
+    const dxL = dx * cN - dy * sN;
+    const dyL = dx * sN + dy * cN;
+    sel.sx = dxL / (selResizeState.signX * sel.w);
+    sel.sy = dyL / (selResizeState.signY * sel.h);
+    const newCx = (selResizeState.fixed.x + finger.x) / 2;
+    const newCy = (selResizeState.fixed.y + finger.y) / 2;
+    sel.tx = newCx - (sel.originalX + sel.w/2);
+    sel.ty = newCy - (sel.originalY + sel.h/2);
+    applySelectionLayout();
+  });
+  el.addEventListener('pointerup', e => {
+    if (selResizeState && selResizeState.pid === e.pointerId) {
+      try { el.releasePointerCapture(e.pointerId); } catch (_) {}
+      selResizeState = null;
+    }
+  });
+}
+
+/* ----- Rotation handle ----- */
+{
+  const rh = document.querySelector('.h-rot');
+  rh.addEventListener('pointerdown', e => {
+    if (!lassoSelection) return;
+    e.stopPropagation();
+    e.preventDefault();
+    rh.setPointerCapture(e.pointerId);
+    const sel = lassoSelection;
+    const cx = sel.originalX + sel.w/2 + sel.tx;
+    const cy = sel.originalY + sel.h/2 + sel.ty;
+    const finger = screenToCanvasXY(e.clientX, e.clientY);
+    selRotateState = {
+      pid: e.pointerId,
+      startAngle: Math.atan2(finger.y - cy, finger.x - cx),
+      startRot: sel.rot,
+    };
+  });
+  rh.addEventListener('pointermove', e => {
+    if (!selRotateState || selRotateState.pid !== e.pointerId) return;
+    e.preventDefault();
+    const sel = lassoSelection;
+    const cx = sel.originalX + sel.w/2 + sel.tx;
+    const cy = sel.originalY + sel.h/2 + sel.ty;
+    const finger = screenToCanvasXY(e.clientX, e.clientY);
+    const angle = Math.atan2(finger.y - cy, finger.x - cx);
+    sel.rot = selRotateState.startRot + (angle - selRotateState.startAngle);
+    applySelectionLayout();
+  });
+  rh.addEventListener('pointerup', e => {
+    if (selRotateState && selRotateState.pid === e.pointerId) {
+      try { rh.releasePointerCapture(e.pointerId); } catch (_) {}
+      selRotateState = null;
+    }
+  });
+}
+
+/* ----- Two-finger pinch on selection: uniform scale + rotate + translate ----- */
+selOverlay.addEventListener('touchstart', e => {
+  if (!lassoSelection || e.touches.length !== 2) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const t1 = e.touches[0], t2 = e.touches[1];
+  selPinchState = {
+    startDist:  Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY) || 1,
+    startAngle: Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX),
+    startMidX:  (t1.clientX + t2.clientX) / 2,
+    startMidY:  (t1.clientY + t2.clientY) / 2,
+    startSx: lassoSelection.sx, startSy: lassoSelection.sy,
+    startRot: lassoSelection.rot,
+    startTx: lassoSelection.tx, startTy: lassoSelection.ty,
+  };
+}, { passive: false });
+selOverlay.addEventListener('touchmove', e => {
+  if (!selPinchState || e.touches.length < 2) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const t1 = e.touches[0], t2 = e.touches[1];
+  const dist  = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY) || 1;
+  const angle = Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX);
+  const midX  = (t1.clientX + t2.clientX) / 2;
+  const midY  = (t1.clientY + t2.clientY) / 2;
+  const factor = dist / selPinchState.startDist;
+  const dAng   = angle - selPinchState.startAngle;
+  const s = frameScreenScale();
+  lassoSelection.sx  = selPinchState.startSx * factor;
+  lassoSelection.sy  = selPinchState.startSy * factor;
+  lassoSelection.rot = selPinchState.startRot + dAng;
+  lassoSelection.tx  = selPinchState.startTx + (midX - selPinchState.startMidX) / s;
+  lassoSelection.ty  = selPinchState.startTy + (midY - selPinchState.startMidY) / s;
+  applySelectionLayout();
+}, { passive: false });
+selOverlay.addEventListener('touchend', e => {
+  if (e.touches.length < 2) selPinchState = null;
+});
+
+/* Re-layout when window resizes */
+window.addEventListener('resize', () => { if (lassoSelection) applySelectionLayout(); });
+
+/* ============================================================
+ * Thumbnails view
+ * ============================================================ */
+async function renderThumbs() {
+  const grid = document.getElementById('thumb-grid');
+  document.getElementById('thumbs-title-name').textContent = state.currentBook.name;
+  document.getElementById('thumbs-title-meta').textContent =
+    `· ${state.currentBook.pageCount} pages`;
+  grid.innerHTML = '';
+
+  const views = viewsOf(state.currentBook);
+  const b = state.currentBook;
+
+  // Auto-fill grid that respects the user-controlled thumbsZoom so + / − /
+  // Cmd-scroll changes how many thumbs fit per row.
+  applyThumbsZoom();
+
+  for (let i = 0; i < views.length; i++) {
+    const v = views[i];
+    const cell = document.createElement('button');
+    cell.className = 'thumb';
+
+    const img = document.createElement('div');
+    img.className = 'thumb-img' + (i === state.currentViewIdx ? ' active-view' : '');
+    // Always use spread aspect ratio so a single page renders at the same scale
+    // as one panel of a spread (cover sits on the right, back on the left).
+    img.style.aspectRatio = `${b.w * 2} / ${b.h}`;
+
+    const isSpread = v.type === 'spread';
+    const isCover  = !isSpread && v.pages[0] === 0;
+
+    // Slot order
+    const slots = [];
+    if (isSpread) {
+      slots.push({ kind: 'page', pageNum: v.pages[0] });
+      slots.push({ kind: 'page', pageNum: v.pages[1] });
+    } else if (isCover) {
+      slots.push({ kind: 'spacer' });
+      slots.push({ kind: 'page', pageNum: v.pages[0] });
+    } else {
+      slots.push({ kind: 'page', pageNum: v.pages[0] });
+      slots.push({ kind: 'spacer' });
+    }
+
+    for (const s of slots) {
+      const slot = document.createElement('div');
+      slot.style.flex = '1';
+      slot.style.position = 'relative';
+      if (s.kind === 'page') {
+        slot.style.background = PAPER_COLOR;
+        const pn = s.pageNum;
+        idbGet('pages', `${b.id}-p${pn}`).then(blob => {
+          if (blob) {
+            const url = URL.createObjectURL(blob);
+            const im = new Image();
+            im.onload = () => URL.revokeObjectURL(url);
+            Object.assign(im.style, { width: '100%', height: '100%', display: 'block', objectFit: 'contain' });
+            im.src = url;
+            slot.appendChild(im);
+          }
+          // Bake text boxes for this page on top
+          const tbs = (b.textBoxes && b.textBoxes[`p${pn}`]) || [];
+          if (tbs.length) {
+            const tcanvas = document.createElement('canvas');
+            tcanvas.width = b.w; tcanvas.height = b.h;
+            const tctx = tcanvas.getContext('2d');
+            for (const tb of tbs) drawTextBoxOnCanvas(tctx, tb);
+            Object.assign(tcanvas.style, {
+              position: 'absolute', inset: 0,
+              width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none',
+            });
+            slot.appendChild(tcanvas);
+          }
+        });
+      } else {
+        slot.style.background = 'transparent';
+      }
+      img.appendChild(slot);
+    }
+
+    if (isSpread) {
+      const gut = document.createElement('div');
+      gut.className = 'gutter-line';
+      img.appendChild(gut);
+    }
+
+    cell.appendChild(img);
+    const num = document.createElement('div');
+    num.className = 'thumb-num';
+    const lbl = counterLabelFor(v, b);
+    num.textContent = `${lbl.label} · ${lbl.num}`;
+    cell.appendChild(num);
+    cell.onclick = async () => {
+      state.currentViewIdx = i;
+      state.currentBook.viewIdx = i;
+      await upsertBook(state.currentBook);
+      goDraw();
+    };
+    grid.appendChild(cell);
+  }
+}
+
+document.getElementById('thumbs-close').onclick = goDraw;
+
+/* Back-to-projects shortcut from thumbnail view. */
+document.getElementById('thumbs-back-projects').onclick = async () => {
+  await flushBookSave();
+  goProjects();
+};
+
+/* Click the book name to rename it inline. */
+{
+  const nameEl = document.getElementById('thumbs-title-name');
+  let originalName = '';
+  nameEl.addEventListener('click', () => {
+    if (nameEl.contentEditable === 'true') return;
+    originalName = nameEl.textContent;
+    nameEl.contentEditable = 'true';
+    nameEl.focus();
+    // Select all
+    const r = document.createRange();
+    r.selectNodeContents(nameEl);
+    const sel = window.getSelection();
+    sel.removeAllRanges(); sel.addRange(r);
+  });
+  function commitName() {
+    if (nameEl.contentEditable !== 'true') return;
+    nameEl.contentEditable = 'false';
+    const next = nameEl.textContent.trim();
+    if (!next) { nameEl.textContent = originalName; return; }
+    if (next === originalName) return;
+    state.currentBook.name = next;
+    upsertBook(state.currentBook).then(() => { /* saved */ });
+  }
+  nameEl.addEventListener('blur', commitName);
+  nameEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); nameEl.blur(); }
+    if (e.key === 'Escape') { nameEl.textContent = originalName; nameEl.blur(); }
+  });
+}
+
+/* Thumbnail-grid zoom: scale the cells up or down. */
+let thumbsZoom = 1;
+const THUMBS_ZOOM_MIN = 0.5, THUMBS_ZOOM_MAX = 3;
+function applyThumbsZoom() {
+  const grid = document.getElementById('thumb-grid');
+  // Adjust the column min-size and gap proportionally.
+  const baseMin = 220 * thumbsZoom;
+  grid.style.gridTemplateColumns = `repeat(auto-fill, minmax(${baseMin}px, 1fr))`;
+}
+document.getElementById('thumbs-zoom-in').onclick = () => {
+  thumbsZoom = Math.min(THUMBS_ZOOM_MAX, thumbsZoom * 1.2);
+  applyThumbsZoom();
+};
+document.getElementById('thumbs-zoom-out').onclick = () => {
+  thumbsZoom = Math.max(THUMBS_ZOOM_MIN, thumbsZoom / 1.2);
+  applyThumbsZoom();
+};
+/* Allow scroll-wheel zoom in thumbnail view too. */
+document.getElementById('thumbs-view').addEventListener('wheel', e => {
+  if (!e.ctrlKey && !e.metaKey) return;
+  e.preventDefault();
+  const factor = Math.exp(-e.deltaY * 0.005);
+  thumbsZoom = Math.max(THUMBS_ZOOM_MIN, Math.min(THUMBS_ZOOM_MAX, thumbsZoom * factor));
+  applyThumbsZoom();
+}, { passive: false });
+
+/* ============================================================
+ * Export — PDF and ZIP
+ * ============================================================ */
+function toast(msg, ms = 1800) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), ms);
+}
+
+async function pageBlobOrPaper(book, n) {
+  const blob = await idbGet('pages', `${book.id}-p${n}`);
+  if (blob) return blob;
+  const c = document.createElement('canvas');
+  c.width = book.w; c.height = book.h;
+  const cx = c.getContext('2d');
+  cx.fillStyle = PAPER_COLOR; cx.fillRect(0, 0, c.width, c.height);
+  return canvasToBlob(c);
+}
+async function loadImageBlob(blob) {
+  return await createImageBitmap(blob);
+}
+function blobToDataURL(blob) {
+  return new Promise(res => {
+    const fr = new FileReader();
+    fr.onload = () => res(fr.result);
+    fr.readAsDataURL(blob);
+  });
+}
+
+/* Render a page's drawing + text boxes onto a fresh canvas at full book resolution. */
+async function renderPageBaked(book, pageNum) {
+  const c = document.createElement('canvas');
+  c.width = book.w; c.height = book.h;
+  const cx = c.getContext('2d');
+  cx.fillStyle = PAPER_COLOR;
+  cx.fillRect(0, 0, c.width, c.height);
+  const blob = await idbGet('pages', `${book.id}-p${pageNum}`);
+  if (blob) {
+    const bmp = await createImageBitmap(blob);
+    cx.drawImage(bmp, 0, 0, c.width, c.height);
+  }
+  const tbs = (book.textBoxes && book.textBoxes[`p${pageNum}`]) || [];
+  for (const tb of tbs) drawTextBoxOnCanvas(cx, tb);
+  return c;
+}
+async function pageBlobBaked(book, pageNum) {
+  const c = await renderPageBaked(book, pageNum);
+  return new Promise(res => c.toBlob(res, 'image/png'));
+}
+
+async function exportPDF(book) {
+  if (typeof window.jspdf === 'undefined') { toast('PDF library still loading…'); return; }
+  toast('Building PDF…', 4000);
+  const { jsPDF } = window.jspdf;
+  const views = viewsOf(book);
+  const doc = new jsPDF({
+    orientation: book.w >= book.h ? 'landscape' : 'portrait',
+    unit: 'pt', format: [book.w, book.h], compress: true,
+  });
+  // jsPDF auto-creates one blank page; we'll add fresh pages with correct dims and delete the auto one at the end.
+  for (let i = 0; i < views.length; i++) {
+    const v = views[i];
+    const dims = v.type === 'spread' ? [book.w * 2, book.h] : [book.w, book.h];
+    doc.addPage(dims, dims[0] >= dims[1] ? 'landscape' : 'portrait');
+    if (v.type === 'single') {
+      const blob = await pageBlobBaked(book, v.pages[0]);
+      const url  = await blobToDataURL(blob);
+      doc.addImage(url, 'PNG', 0, 0, book.w, book.h);
+    } else {
+      const lblob = await pageBlobBaked(book, v.pages[0]);
+      const rblob = await pageBlobBaked(book, v.pages[1]);
+      const lurl = await blobToDataURL(lblob);
+      const rurl = await blobToDataURL(rblob);
+      doc.addImage(lurl, 'PNG', 0, 0, book.w, book.h);
+      doc.addImage(rurl, 'PNG', book.w, 0, book.w, book.h);
+      // Draw dashed gutter line
+      doc.setDrawColor(120);
+      doc.setLineDashPattern([8, 6], 0);
+      doc.setLineWidth(1);
+      doc.line(book.w, 0, book.w, book.h);
+    }
+  }
+  // Remove jsPDF's auto-created blank first page
+  doc.deletePage(1);
+  doc.save(`${safeName(book.name)}.pdf`);
+  toast('PDF saved');
+}
+
+async function exportZIP(book) {
+  if (typeof JSZip === 'undefined') { toast('Zip library still loading…'); return; }
+  toast('Building zip…', 4000);
+  const zip = new JSZip();
+  for (let i = 0; i < book.pageCount; i++) {
+    const blob = await pageBlobBaked(book, i);
+    const name = `${pad(i + 1)}.png`;
+    zip.file(name, blob);
+  }
+  const out = await zip.generateAsync({ type: 'blob' });
+  const url = URL.createObjectURL(out);
+  const a = document.createElement('a');
+  a.href = url; a.download = `${safeName(book.name)}.zip`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  toast('Zip saved');
+}
+function safeName(n) {
+  return String(n).replace(/[^\w\-]+/g, '_').replace(/^_+|_+$/g, '') || 'book';
+}
+
+/* ============================================================
+ * Boot
+ * ============================================================ */
+(async function init() {
+  await migrateV1IfNeeded();
+  state.books = await getBooks();
+  // Default landing
+  if (state.books.length === 0) {
+    goSetup();
+  } else {
+    goProjects();
+  }
+})();
+
+// Prevent double-tap zoom
+let lastTouchEnd = 0;
+document.addEventListener('touchend', e => {
+  const now = Date.now();
+  if (now - lastTouchEnd <= 300) e.preventDefault();
+  lastTouchEnd = now;
+}, { passive: false });
+
+</script>
+</body>
+</html>
