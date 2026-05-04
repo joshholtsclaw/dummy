@@ -1602,11 +1602,13 @@ function paintCleanSegment(ctx, a, b, wA, wB, color) {
   ctx.stroke();
 }
 
-function paintDot(ctx, pt, brushW, color, _textured) {
-  paintCleanDot(ctx, pt, brushW, color);
+function paintDot(ctx, pt, brushW, color, textured) {
+  if (textured) paintTexturedDot(ctx, pt, brushW, color);
+  else          paintCleanDot   (ctx, pt, brushW, color);
 }
-function paintSegment(ctx, a, b, wA, wB, color, _textured) {
-  paintCleanSegment(ctx, a, b, wA, wB, color);
+function paintSegment(ctx, a, b, wA, wB, color, textured) {
+  if (textured) paintTexturedSegment(ctx, a, b, wA, wB, color);
+  else          paintCleanSegment   (ctx, a, b, wA, wB, color);
 }
 
 /* Repaint a finished stroke from its point list, applying full taper. */
