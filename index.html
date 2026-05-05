@@ -449,14 +449,30 @@
   .thumb-img { cursor: default; }
   .thumb-img {
     width: 100%;
-    background: var(--paper);
     border-radius: 2px;
-    box-shadow: 0 4px 14px rgba(0,0,0,.3);
-    overflow: hidden;
+    overflow: visible;
     display: flex; position: relative;
     transition: transform .15s;
   }
-  .thumb-img.active-view { outline: 2px solid var(--ink); outline-offset: 4px; }
+  /* Spread thumbnails read as one card (two pages joined). */
+  .thumb-img.is-spread-thumb {
+    background: var(--paper);
+    box-shadow: 0 4px 14px rgba(0,0,0,.3);
+    overflow: hidden;
+  }
+  /* Single-page thumbnails (cover, back) leave the empty half fully transparent
+   * so the page reads as a stand-alone card, distinct from a spread. */
+  .thumb-img.is-single-thumb { background: transparent; box-shadow: none; }
+  .thumb-img.is-single-thumb .slot-page {
+    background: var(--paper);
+    box-shadow: 0 4px 14px rgba(0,0,0,.3);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .thumb-img.is-spread-thumb.active-view { outline: 2px solid var(--ink); outline-offset: 4px; }
+  .thumb-img.is-single-thumb.active-view .slot-page {
+    outline: 2px solid var(--ink); outline-offset: 4px;
+  }
   .thumb-img:active { transform: scale(.97); }
   .thumb-img img, .thumb-img canvas {
     width: 100%; height: 100%; object-fit: contain; display: block;
@@ -3385,14 +3401,16 @@ async function renderThumbs() {
     const cell = document.createElement('button');
     cell.className = 'thumb';
 
+    const isSpread = v.type === 'spread';
+    const isCover  = !isSpread && v.pages[0] === 0;
+
     const img = document.createElement('div');
-    img.className = 'thumb-img' + (i === state.currentViewIdx ? ' active-view' : '');
+    img.className = 'thumb-img'
+      + (i === state.currentViewIdx ? ' active-view' : '')
+      + (isSpread ? ' is-spread-thumb' : ' is-single-thumb');
     // Always use spread aspect ratio so a single page renders at the same scale
     // as one panel of a spread (cover sits on the right, back on the left).
     img.style.aspectRatio = `${b.w * 2} / ${b.h}`;
-
-    const isSpread = v.type === 'spread';
-    const isCover  = !isSpread && v.pages[0] === 0;
 
     // Slot order
     const slots = [];
@@ -3412,6 +3430,7 @@ async function renderThumbs() {
       slot.style.flex = '1';
       slot.style.position = 'relative';
       if (s.kind === 'page') {
+        slot.classList.add('slot-page');
         slot.style.background = PAPER_COLOR;
         const pn = s.pageNum;
         idbGet('pages', `${b.id}-p${pn}`).then(blob => {
