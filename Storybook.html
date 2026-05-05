@@ -86,6 +86,12 @@
     padding: 10px 20px; border-radius: 999px;
     font-size: 13px; font-weight: 500; letter-spacing: .03em;
   }
+  .link-btn {
+    color: var(--ink-dim); font-size: 13px;
+    padding: 8px 14px; border-radius: 999px;
+    border: 1px solid var(--hairline);
+  }
+  .link-btn:hover { color: var(--ink); background: var(--panel); }
   .project-grid {
     display: grid; gap: 32px 24px;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -402,7 +408,9 @@
   .thumb {
     display: flex; flex-direction: column; align-items: center; gap: 8px;
     background: none; text-align: center;
+    cursor: default;
   }
+  .thumb-img { cursor: default; }
   .thumb-img {
     width: 100%;
     background: var(--paper);
@@ -417,6 +425,14 @@
   .thumb-img img, .thumb-img canvas {
     width: 100%; height: 100%; object-fit: contain; display: block;
     flex: 1;
+    /* Make thumb images and the swapped-in drawing canvas event-transparent
+     * so the parent cell receives pointer events. Without this, dragging on
+     * a populated thumb starts the browser's native image-drag instead, which
+     * suppresses pointermove and breaks drag-to-draw. The cell uses pointer
+     * capture, so events still flow correctly during a drawing stroke. */
+    pointer-events: none;
+    -webkit-user-drag: none;
+    user-select: none;
   }
   .thumb-img.is-spread > .gutter-line { display: block; }
   .thumb-num {
@@ -659,7 +675,11 @@
   <section id="projects-view" class="projects hidden">
     <div class="projects-header">
       <div class="projects-title">Projects</div>
-      <button class="new-btn" id="new-project-btn">+ New book</button>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <button class="link-btn" id="import-project-btn">Import…</button>
+        <button class="new-btn" id="new-project-btn">+ New book</button>
+        <input type="file" id="import-project-file" accept=".zip,.storybook,application/zip" style="display:none">
+      </div>
     </div>
     <div class="project-grid" id="project-grid"></div>
   </section>
@@ -774,40 +794,6 @@
       </button>
     </div>
 
-    <div class="toolbar" id="toolbar">
-      <button class="tool-btn active" data-tool="pencil" id="tool-pencil" aria-label="Pencil">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 3.5l4 4L8 20H4v-4z"/><path d="M14 6l4 4"/></svg>
-      </button>
-      <button class="tool-btn" data-tool="eraser" id="tool-eraser" aria-label="Eraser">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l8-8 6 6-5 5H6z"/><path d="M11 9l4-4 6 6-4 4"/></svg>
-      </button>
-      <button class="tool-btn" data-tool="text" id="tool-text" aria-label="Text">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6h14M12 6v14M9 20h6"/></svg>
-      </button>
-      <button class="tool-btn" data-tool="lasso" id="tool-lasso" aria-label="Lasso">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5c4-2 8-2 12 0s2 6 0 8-8 1-12 1-3-7 0-9z" stroke-dasharray="2 2"/><path d="M9 16c-1 1.5-1 3 0 4 1 1 3 .5 3 .5"/></svg>
-      </button>
-
-      <div class="divider"></div>
-
-      <div class="slider-cluster">
-        <div class="slider-label">Size</div>
-        <div class="readout"><div class="dot" id="size-dot"></div></div>
-        <input type="range" min="1" max="120" value="3" class="slider" id="brush-size">
-      </div>
-
-      <div class="divider"></div>
-
-      <div class="slider-cluster">
-        <div class="slider-label">Opac</div>
-        <div class="readout"><div class="dot" id="opacity-dot"></div></div>
-        <input type="range" min="5" max="100" value="100" class="slider" id="brush-opacity">
-      </div>
-
-      <div class="divider"></div>
-
-      <div id="swatches" style="display:flex; gap:6px;"></div>
-    </div>
   </section>
 
   <!-- ============== THUMBNAILS VIEW ============== -->
@@ -828,6 +814,43 @@
     </div>
     <div class="thumb-grid" id="thumb-grid"></div>
   </section>
+
+  <!-- Drawing toolbar — lives outside the view sections so it can be visible in
+       both draw-view and thumbs-view. -->
+  <div class="toolbar hidden" id="toolbar">
+    <button class="tool-btn active" data-tool="pencil" id="tool-pencil" aria-label="Pencil">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 3.5l4 4L8 20H4v-4z"/><path d="M14 6l4 4"/></svg>
+    </button>
+    <button class="tool-btn" data-tool="eraser" id="tool-eraser" aria-label="Eraser">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l8-8 6 6-5 5H6z"/><path d="M11 9l4-4 6 6-4 4"/></svg>
+    </button>
+    <button class="tool-btn" data-tool="text" id="tool-text" aria-label="Text">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6h14M12 6v14M9 20h6"/></svg>
+    </button>
+    <button class="tool-btn" data-tool="lasso" id="tool-lasso" aria-label="Lasso">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5c4-2 8-2 12 0s2 6 0 8-8 1-12 1-3-7 0-9z" stroke-dasharray="2 2"/><path d="M9 16c-1 1.5-1 3 0 4 1 1 3 .5 3 .5"/></svg>
+    </button>
+
+    <div class="divider"></div>
+
+    <div class="slider-cluster">
+      <div class="slider-label">Size</div>
+      <div class="readout"><div class="dot" id="size-dot"></div></div>
+      <input type="range" min="1" max="120" value="3" class="slider" id="brush-size">
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="slider-cluster">
+      <div class="slider-label">Opac</div>
+      <div class="readout"><div class="dot" id="opacity-dot"></div></div>
+      <input type="range" min="5" max="100" value="100" class="slider" id="brush-opacity">
+    </div>
+
+    <div class="divider"></div>
+
+    <div id="swatches" style="display:flex; gap:6px;"></div>
+  </div>
 
 </div>
 
@@ -1029,6 +1052,9 @@ function showView(name) {
   for (const v of ['projects','setup','draw','thumbs']) {
     document.getElementById(`${v}-view`).classList.toggle('hidden', v !== name);
   }
+  // Drawing toolbar: visible in draw and thumbs views, hidden elsewhere.
+  const tb = document.getElementById('toolbar');
+  if (tb) tb.classList.toggle('hidden', !(name === 'draw' || name === 'thumbs'));
   hidePopover();
 }
 
@@ -1306,6 +1332,7 @@ function showProjectMenu(book, anchor) {
     { label: 'Open',          icon: ICONS.rename, onClick: () => openBook(book.id) },
     { label: 'Rename',        icon: ICONS.rename, onClick: () => renameBook(book) },
     'sep',
+    { label: 'Save project file…', icon: ICONS.zip, onClick: () => exportProjectArchive(book) },
     { label: 'Export PDF',    icon: ICONS.pdf,    onClick: () => exportPDF(book) },
     { label: 'Export PNGs (zip)', icon: ICONS.zip, onClick: () => exportZIP(book) },
     'sep',
@@ -2151,6 +2178,7 @@ document.getElementById('open-menu').onclick = (e) => {
   showPopover([
     { label: 'Rename',           icon: ICONS.rename, onClick: () => renameBook(state.currentBook) },
     'sep',
+    { label: 'Save project file…', icon: ICONS.zip, onClick: () => exportProjectArchive(state.currentBook) },
     { label: 'Export PDF',       icon: ICONS.pdf,    onClick: () => exportPDF(state.currentBook) },
     { label: 'Export PNGs (zip)', icon: ICONS.zip,   onClick: () => exportZIP(state.currentBook) },
     'sep',
@@ -2899,7 +2927,185 @@ window.addEventListener('resize', () => { if (lassoSelection) applySelectionLayo
 /* ============================================================
  * Thumbnails view
  * ============================================================ */
+/* ============================================================
+ * Thumbnail drawing — drag-to-draw on a thumbnail in gallery view.
+ *
+ * Lazy canvas allocation: at any time at most one thumbnail has a full-res
+ * <canvas> swapped in for its <img>. Switching to a different thumb saves
+ * the previous one and converts it back to a static <img>.
+ * Pen / mouse drag → draw on that page. Tap (no drag) → navigate to page.
+ * Finger touch passes through to scroll if a Pencil has been seen, so the
+ * thumb grid still scrolls naturally.
+ * ============================================================ */
+let activeThumb = null;  // { slot, pageNum, canvas, ctx }
+
+async function activateThumbForDrawing(slot, pageNum) {
+  if (activeThumb && activeThumb.slot === slot && activeThumb.pageNum === pageNum) {
+    return activeThumb;
+  }
+  if (activeThumb) await deactivateThumb();
+  const b = state.currentBook;
+  const c = document.createElement('canvas');
+  c.width = b.w; c.height = b.h;
+  Object.assign(c.style, {
+    width: '100%', height: '100%', display: 'block',
+    position: 'absolute', inset: 0, objectFit: 'contain',
+    touchAction: 'none',
+  });
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = PAPER_COLOR;
+  ctx.fillRect(0, 0, c.width, c.height);
+  const blob = await idbGet('pages', `${b.id}-p${pageNum}`);
+  if (blob) {
+    const bmp = await createImageBitmap(blob);
+    ctx.drawImage(bmp, 0, 0);
+  }
+  // Bake text boxes so the drawing surface matches what the thumb looked like.
+  const tbs = (b.textBoxes && b.textBoxes[`p${pageNum}`]) || [];
+  for (const tb of tbs) drawTextBoxOnCanvas(ctx, tb);
+  // Hide existing children and append canvas as the active drawing surface.
+  for (const child of [...slot.children]) child.style.display = 'none';
+  slot.appendChild(c);
+  activeThumb = { slot, pageNum, canvas: c, ctx };
+  return activeThumb;
+}
+
+async function deactivateThumb() {
+  if (!activeThumb) return;
+  const at = activeThumb;
+  activeThumb = null;
+  // Save canvas back to IDB
+  const blob = await new Promise(r => at.canvas.toBlob(r, 'image/png'));
+  const b = state.currentBook;
+  if (blob && b) {
+    await idbPut('pages', `${b.id}-p${at.pageNum}`, blob);
+  }
+  // Replace the slot's old <img> (if any) with a fresh one from the new blob.
+  const oldImg = at.slot.querySelector('img');
+  if (blob) {
+    const url = URL.createObjectURL(blob);
+    if (oldImg) {
+      const prevSrc = oldImg.src;
+      oldImg.src = url;
+      oldImg.style.display = '';
+      setTimeout(() => { try { URL.revokeObjectURL(prevSrc); } catch (_) {} }, 500);
+    } else {
+      const im = new Image();
+      Object.assign(im.style, { width: '100%', height: '100%', display: 'block', objectFit: 'contain' });
+      im.onload = () => URL.revokeObjectURL(url);
+      im.src = url;
+      at.slot.appendChild(im);
+    }
+  }
+  // Show any other previously-hidden children (e.g. baked text canvas).
+  for (const child of [...at.slot.children]) {
+    if (child !== at.canvas && child.style && child.style.display === 'none') {
+      child.style.display = '';
+    }
+  }
+  // Remove the active drawing canvas.
+  at.canvas.remove();
+}
+
+function findThumbSlotAtPoint(pageSlots, clientX, clientY) {
+  for (const ps of pageSlots) {
+    const r = ps.slot.getBoundingClientRect();
+    if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) {
+      return ps;
+    }
+  }
+  return null;
+}
+function thumbCanvasPoint(canvas, clientX, clientY, pressure, pointerType) {
+  const r = canvas.getBoundingClientRect();
+  return {
+    x: (clientX - r.left) * (canvas.width  / r.width),
+    y: (clientY - r.top)  * (canvas.height / r.height),
+    p: (pointerType === 'pen' && pressure > 0) ? pressure : 0.5,
+  };
+}
+
+function setupThumbCellDrawing(cell, pageSlots) {
+  let startInfo = null;
+  let mode = 'idle';   // 'idle' | 'maybe' | 'drawing' | 'cancelled'
+  let lastPt = null;
+
+  cell.addEventListener('pointerdown', e => {
+    if (state.tool !== 'pencil' && state.tool !== 'eraser') return;
+    if (e.pointerType === 'touch' && supportsPen()) return;  // finger scrolls
+    startInfo = { x: e.clientX, y: e.clientY, pid: e.pointerId, type: e.pointerType, pressure: e.pressure };
+    mode = 'maybe';
+    cell.setPointerCapture(e.pointerId);
+  });
+
+  cell.addEventListener('pointermove', async e => {
+    if (!startInfo || startInfo.pid !== e.pointerId) return;
+    if (mode === 'maybe') {
+      const dist = Math.hypot(e.clientX - startInfo.x, e.clientY - startInfo.y);
+      if (dist < 5) return;
+      // Promote to drawing
+      const ps = findThumbSlotAtPoint(pageSlots, startInfo.x, startInfo.y);
+      if (!ps) { mode = 'cancelled'; return; }
+      mode = 'drawing';
+      const at = await activateThumbForDrawing(ps.slot, ps.pageNum);
+      if (!at) { mode = 'cancelled'; return; }
+      // Initial dot at the original pointerdown position.
+      lastPt = thumbCanvasPoint(at.canvas, startInfo.x, startInfo.y, startInfo.pressure, startInfo.type);
+      const tool = state.tool;
+      const textured = tool !== 'eraser';
+      const color = tool === 'eraser' ? PAPER_COLOR : GREYS[state.greyIdx].hex;
+      const base = baseWidthFor(tool);
+      const w = pressureWidth(base, lastPt.p) * 0.6;
+      if (tool === 'pencil') at.ctx.globalCompositeOperation = 'darken';
+      paintDot(at.ctx, lastPt, w, color, textured);
+    }
+    if (mode !== 'drawing' || !activeThumb) return;
+    e.preventDefault();
+    const at = activeThumb;
+    const tool = state.tool;
+    const textured = tool !== 'eraser';
+    const color = tool === 'eraser' ? PAPER_COLOR : GREYS[state.greyIdx].hex;
+    const base = baseWidthFor(tool);
+    const events = (typeof e.getCoalescedEvents === 'function') ? e.getCoalescedEvents() : [e];
+    for (const ev of events) {
+      const pt = thumbCanvasPoint(at.canvas, ev.clientX, ev.clientY, ev.pressure, ev.pointerType);
+      const wA = pressureWidth(base, lastPt.p);
+      const wB = pressureWidth(base, pt.p);
+      paintSegment(at.ctx, lastPt, pt, wA, wB, color, textured);
+      lastPt = pt;
+    }
+  });
+
+  cell.addEventListener('pointerup', async e => {
+    if (!startInfo || startInfo.pid !== e.pointerId) return;
+    try { cell.releasePointerCapture(e.pointerId); } catch (_) {}
+    const wasDrawing = (mode === 'drawing');
+    // CRITICAL: set the click-suppression flag synchronously here, BEFORE any
+    // await below. The browser fires `click` immediately after `pointerup`, and
+    // if we wait for canvas.toBlob to resolve, the click sneaks through and
+    // triggers navigation to the page.
+    if (wasDrawing) {
+      cell._suppressClick = true;
+      setTimeout(() => { cell._suppressClick = false; }, 500);
+    }
+    startInfo = null;
+    mode = 'idle';
+    lastPt = null;
+    if (wasDrawing && activeThumb) {
+      activeThumb.ctx.globalCompositeOperation = 'source-over';
+      const at = activeThumb;
+      const blob = await new Promise(r => at.canvas.toBlob(r, 'image/png'));
+      if (blob) await idbPut('pages', `${state.currentBook.id}-p${at.pageNum}`, blob);
+    }
+  });
+  cell.addEventListener('pointercancel', () => {
+    startInfo = null; mode = 'idle'; lastPt = null;
+  });
+}
+
 async function renderThumbs() {
+  // If we're re-rendering, abandon any active thumb (its DOM is about to vanish).
+  if (activeThumb) await deactivateThumb();
   const grid = document.getElementById('thumb-grid');
   document.getElementById('thumbs-title-name').textContent = state.currentBook.name;
   document.getElementById('thumbs-title-meta').textContent =
@@ -2988,7 +3194,20 @@ async function renderThumbs() {
     const lbl = counterLabelFor(v, b);
     num.textContent = `${lbl.label} · ${lbl.num}`;
     cell.appendChild(num);
+
+    // Collect page slots so the drag-to-draw handler can find which page the
+    // pointer is over (a spread cell has two page slots).
+    const pageSlots = [];
+    let slotIdx = 0;
+    for (const s of slots) {
+      const slotEl = img.children[slotIdx++];
+      if (s.kind === 'page') pageSlots.push({ slot: slotEl, pageNum: s.pageNum });
+    }
+    setupThumbCellDrawing(cell, pageSlots);
+
     cell.onclick = async () => {
+      if (cell._suppressClick) return;
+      if (activeThumb) await deactivateThumb();
       state.currentViewIdx = i;
       state.currentBook.viewIdx = i;
       await upsertBook(state.currentBook);
@@ -2998,10 +3217,14 @@ async function renderThumbs() {
   }
 }
 
-document.getElementById('thumbs-close').onclick = goDraw;
+document.getElementById('thumbs-close').onclick = async () => {
+  if (activeThumb) await deactivateThumb();
+  goDraw();
+};
 
 /* Back-to-projects shortcut from thumbnail view. */
 document.getElementById('thumbs-back-projects').onclick = async () => {
+  if (activeThumb) await deactivateThumb();
   await flushBookSave();
   goProjects();
 };
@@ -3172,6 +3395,95 @@ async function exportZIP(book) {
 function safeName(n) {
   return String(n).replace(/[^\w\-]+/g, '_').replace(/^_+|_+$/g, '') || 'book';
 }
+
+/* Project archive — round-trippable .storybook.zip with raw page bitmaps + metadata.
+ * Use this to back up, transfer between devices, or preserve text-box editability. */
+async function exportProjectArchive(book) {
+  if (typeof JSZip === 'undefined') { toast('Archive lib still loading…'); return; }
+  toast('Saving project file…', 4000);
+  const zip = new JSZip();
+  const meta = {
+    storybook: 1,
+    exportedAt: Date.now(),
+    book: {
+      name: book.name,
+      sizeId: book.sizeId,
+      w: book.w, h: book.h,
+      pageCount: book.pageCount,
+      viewIdx: book.viewIdx || 0,
+      textBoxes: book.textBoxes || {},
+      createdAt: book.createdAt,
+      updatedAt: book.updatedAt,
+    },
+  };
+  zip.file('book.json', JSON.stringify(meta, null, 2));
+  for (let i = 0; i < book.pageCount; i++) {
+    const blob = await idbGet('pages', `${book.id}-p${i}`);
+    if (blob) zip.file(`pages/p${i}.png`, blob);
+  }
+  const out = await zip.generateAsync({ type: 'blob' });
+  const url = URL.createObjectURL(out);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${safeName(book.name)}.storybook.zip`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast('Project file saved');
+}
+
+async function importProjectArchive(file) {
+  if (typeof JSZip === 'undefined') { toast('Archive lib still loading…'); return; }
+  toast('Importing project…', 4000);
+  try {
+    const zip = await JSZip.loadAsync(file);
+    const metaFile = zip.file('book.json');
+    if (!metaFile) { toast('Not a Storybook archive'); return; }
+    const meta = JSON.parse(await metaFile.async('string'));
+    const m = meta.book || meta;
+    if (!m || !m.w || !m.h || !m.pageCount) { toast('Archive metadata invalid'); return; }
+    const id = 'b_' + Date.now();
+    const baseName = m.name || 'Imported';
+    let name = baseName;
+    const existing = await getBooks();
+    const used = new Set(existing.map(b => b.name));
+    let n = 1;
+    while (used.has(name)) { n++; name = `${baseName} ${n}`; }
+    const book = {
+      id, name,
+      sizeId: m.sizeId || 'square',
+      w: m.w, h: m.h,
+      pageCount: m.pageCount,
+      viewIdx: 0,
+      textBoxes: m.textBoxes || {},
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    await upsertBook(book);
+    for (let i = 0; i < m.pageCount; i++) {
+      const f = zip.file(`pages/p${i}.png`);
+      if (f) {
+        const blob = await f.async('blob');
+        await idbPut('pages', `${id}-p${i}`, blob);
+      }
+    }
+    state.books = await getBooks();
+    if (state.view === 'projects') renderProjects();
+    toast(`Imported "${name}"`);
+  } catch (err) {
+    console.error(err);
+    toast('Import failed — bad archive');
+  }
+}
+
+/* Import button + hidden file input wiring */
+document.getElementById('import-project-btn').onclick = () => {
+  document.getElementById('import-project-file').click();
+};
+document.getElementById('import-project-file').addEventListener('change', async (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (file) await importProjectArchive(file);
+  e.target.value = '';
+});
 
 /* ============================================================
  * Boot
